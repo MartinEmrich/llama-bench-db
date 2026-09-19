@@ -100,4 +100,4 @@ All other fields of the two lines must be identical; if they are not, reject the
 
 let's start with a simple, paginated table, with one row for each result. Filterable and sortable by computer (plus version), base model, full model ID, quantization (sorted by the number, then the t-shirt size like section, e.g. IQ3_XS < Q4_0 < Q5_K_M), PP and TG tokens and speed (filter as a range).
 
-That's it for now!
+That's it for now. Create a structured implementation plan (e.g. in a TODO.md file), and then work through it!
