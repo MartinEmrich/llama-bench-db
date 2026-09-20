@@ -94,6 +94,10 @@ button.small { padding: 3px 8px; font-size: 12px; }
 .msg.warn { background: var(--warn-bg); border-color: var(--warn-border); color: #78350f; }
 .msg.ok { background: var(--ok-bg); border-color: var(--ok-border); color: #14532d; }
 
+.params-cell { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; white-space: nowrap; }
+.param { margin-right: 8px; }
+.param-val { display: inline-block; min-width: 4ch; }
+
 .muted { color: var(--muted); }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 .actions { display: flex; gap: 6px; }

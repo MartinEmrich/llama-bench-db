@@ -63,6 +63,14 @@ function sortIndicator(field: string): string {
   return f === field ? (dir === 'asc' ? ' ▲' : ' ▼') : ''
 }
 
+// Unknown llama-bench parameters, keys sorted so rows with the same param
+// set line up column-wise in the table.
+function sortedParams(r: ResultRow): [string, string][] {
+  return Object.entries(r.params ?? {})
+    .map(([k, v]) => [k, String(v)])
+    .sort(([a], [b]) => a.localeCompare(b))
+}
+
 watch(filters, () => { page.value = 0; loadResults() }, { deep: true })
 
 function onImported() { loadResults(); loadModels() }
@@ -122,6 +130,7 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
             <th>Devices</th>
             <th class="num sortable" @click="onSort('ngl')">ngl{{ sortIndicator('ngl') }}</th>
             <th class="num">fa</th>
+            <th>Params</th>
             <th class="num sortable" @click="onSort('ppTokens')">PP tok{{ sortIndicator('ppTokens') }}</th>
             <th class="num sortable" @click="onSort('tgTokens')">TG tok{{ sortIndicator('tgTokens') }}</th>
             <th class="num sortable" @click="onSort('ppTps')">PP t/s{{ sortIndicator('ppTps') }}</th>
@@ -138,13 +147,16 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
             <td>{{ r.devices ?? '' }}</td>
             <td class="num">{{ r.ngl }}</td>
             <td class="num">{{ r.fa ? 1 : 0 }}</td>
+            <td class="params-cell">
+              <span v-for="[k, v] in sortedParams(r)" :key="k" class="param" :title="`${k}=${v}`">{{ k }}=<span class="param-val">{{ v }}</span></span>
+            </td>
             <td class="num">{{ r.ppTokens }}</td>
             <td class="num">{{ r.tgTokens }}</td>
             <td class="num" :title="`± ${r.ppDeviation}`">{{ r.ppTps.toFixed(2) }}</td>
             <td class="num" :title="`± ${r.tgDeviation}`">{{ r.tgTps.toFixed(2) }}</td>
           </tr>
           <tr v-if="pageData.content.length === 0">
-            <td colspan="12" class="muted">no results</td>
+            <td colspan="13" class="muted">no results</td>
           </tr>
         </tbody>
       </table>
