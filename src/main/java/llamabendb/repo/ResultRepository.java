@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecificationExecutor<Result> {
 
     boolean existsByComputerVersionId(Long computerVersionId);
@@ -23,7 +25,7 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
                 r.modelString, r.sizeGiBObserved, r.backend, r.devices,
                 r.ngl, r.typeK, r.typeV, r.fa, r.threads, r.ts, r.loadMode,
                 r.ppTokens, r.tgTokens, r.ppTps, r.tgTps, r.ppDeviation, r.tgDeviation,
-                r.params
+                r.build, r.params
             ) from Result r
             join r.computerVersion cv
             join cv.computer comp
@@ -55,4 +57,15 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
             @Param("tgTpsMin") Double tgTpsMin,
             @Param("tgTpsMax") Double tgTpsMax,
             Pageable pageable);
+
+    @Query("""
+            select r.build from Result r
+            join r.computerVersion cv
+            join cv.computer comp
+            where comp.id = :computerId
+              and r.build is not null
+              and (:backend is null or r.backend = :backend)
+            order by r.importedAt desc, r.id desc
+            """)
+    List<String> findLatestBuilds(@Param("computerId") Long computerId, @Param("backend") String backend, Pageable pageable);
 }

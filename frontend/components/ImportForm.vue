@@ -1,16 +1,58 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 const emit = defineEmits<{ (e: 'imported'): void }>()
 
 const computers = ref<any[]>([])
 const models = ref<any[]>([])
-const versions = ref<any[]>([])
 const computerId = ref<number | ''>('')
-const versionId = ref<number | ''>('')
 const modelId = ref<number | ''>('')
 const text = ref('')
+const build = ref('')
+const buildDirty = ref(false)
 const busy = ref(false)
+
+const pasteHasBuild = computed(() => /^\s*build:\s*\S/m.test(text.value))
+
+// Header-driven extraction of the backend cell from the first table, so the
+// build prefill can be scoped to computer + backend like the server sees it.
+function extractBackend(t: string): string | null {
+  const lines = t.split('\n')
+  for (let i = 0; i + 1 < lines.length; i++) {
+    const l = lines[i].trim()
+    if (!l.startsWith('|')) continue
+    const cells = l.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+    if (cells[0] !== 'model') continue
+    const idx = cells.indexOf('backend')
+    if (idx < 0) return null
+    for (let j = i + 2; j < lines.length; j++) {
+      const d = lines[j].trim()
+      if (!d) continue
+      if (!d.startsWith('|')) break
+      const dataCells = d.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+      return dataCells[idx] ?? null
+    }
+    return null
+  }
+  return null
+}
+
+let prefillTimer: ReturnType<typeof setTimeout> | null = null
+watch([text, computerId], () => {
+  if (prefillTimer) clearTimeout(prefillTimer)
+  if (pasteHasBuild.value || !computerId.value) return
+  prefillTimer = setTimeout(async () => {
+    try {
+      const q: Record<string, any> = { computerId: Number(computerId.value) }
+      const backend = extractBackend(text.value)
+      if (backend) q.backend = backend
+      const res = await $fetch('/api/results/latest-build', { query: q }) as any
+      if (!buildDirty.value && res?.build) build.value = res.build
+    } catch {
+      // no known build yet (204) or lookup failed — leave the field alone
+    }
+  }, 400)
+})
 const error = ref('')
 const warnings = ref<{ code: string; message: string }[]>([])
 const blocked = ref(false)
@@ -18,12 +60,6 @@ const success = ref('')
 
 async function loadComputers() { computers.value = await $fetch('/api/computers') }
 async function loadModels() { models.value = await $fetch('/api/models') }
-
-watch(computerId, async (id) => {
-  versionId.value = ''
-  if (!id) { versions.value = []; return }
-  versions.value = await $fetch(`/api/computers/${id}/versions`)
-})
 
 async function submit(acknowledge: boolean) {
   busy.value = true
@@ -36,15 +72,17 @@ async function submit(acknowledge: boolean) {
       method: 'POST',
       body: {
         computerId: Number(computerId.value),
-        versionId: Number(versionId.value),
         modelId: Number(modelId.value),
         text: text.value,
+        build: build.value.trim(),
         acknowledgeWarnings: acknowledge
       }
     }) as any
     success.value = `imported ${res.results.length} result${res.results.length === 1 ? '' : 's'}`
     if (res.warnings?.length) warnings.value = res.warnings
     text.value = ''
+    build.value = ''
+    buildDirty.value = false
     emit('imported')
   } catch (e: any) {
     const data = e.data ?? {}
@@ -67,7 +105,8 @@ await loadModels()
   <div class="panel">
     <h2 style="margin-top: 0">Import run results</h2>
     <p class="muted" style="margin-top: -4px">
-      Select the computer, its version and the model, then paste the llama-bench console output.
+      Select the computer and the model, then paste the llama-bench console output.
+      The result is attached to the newest version of the computer.
       One model per paste — multiple models are rejected.
     </p>
 
@@ -77,13 +116,6 @@ await loadModels()
         <select v-model="computerId">
           <option value="">select…</option>
           <option v-for="c in computers" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
-      </div>
-      <div class="filter">
-        <label>Version</label>
-        <select v-model="versionId" :disabled="!versions.length">
-          <option value="">select…</option>
-          <option v-for="v in versions" :key="v.id" :value="v.id">{{ v.createdAt.slice(0, 16).replace('T', ' ') }}</option>
         </select>
       </div>
       <div class="filter">
@@ -97,8 +129,15 @@ await loadModels()
 
     <textarea v-model="text" placeholder="| model | size | params | backend | … | test | t/s |&#10;| … paste the console output here …"></textarea>
 
+    <div v-if="!pasteHasBuild" class="formrow" style="margin-top: 10px">
+      <div class="filter">
+        <label>Build (llama.cpp commit)</label>
+        <input v-model="build" placeholder="e.g. 861bd3c10 (11029)" @input="buildDirty = true">
+      </div>
+    </div>
+
     <div style="margin-top: 10px; display: flex; gap: 8px">
-      <button :disabled="busy || !computerId || !versionId || !modelId || !text.trim()" @click="submit(false)">Import</button>
+      <button :disabled="busy || !computerId || !modelId || !text.trim()" @click="submit(false)">Import</button>
       <button v-if="blocked" :disabled="busy" @click="submit(true)">Import anyway (acknowledge warnings)</button>
     </div>
 

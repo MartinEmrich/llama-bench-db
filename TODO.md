@@ -41,7 +41,7 @@ See `PLAN.md` for requirements. This file tracks the build; check items off as t
 - [x] **Strict single-model rule:** paste with >1 distinct model string → reject with an error listing the distinct strings
 - [x] Normalization: ngl absent → -1; type_k/type_v absent → f16; fa absent → off; lm/mmap → load_mode (auto/mmap/none); ts split on `/` or `;`; size MiB/GiB → GiB float
 - [x] Cross-checks: model size empty → fill Model row; >10% difference → block until re-submit with acknowledge flag; table backend vs devices → non-blocking warning
-- [ ] Stretch: capture the trailing `build: <commit>` line per table into params JSON
+- [x] Stretch: capture the trailing `build: <commit>` line per table — implemented as a promoted typed column `result.build` (Flyway V2, positional attribution to the preceding table) instead of params JSON; import form prefills it from `GET /api/results/latest-build?computerId=&backend=` when the paste has no build line
 
 ## Phase 4 — API (pragmatic JSON, no auth)
 
@@ -72,4 +72,12 @@ See `PLAN.md` for requirements. This file tracks the build; check items off as t
 
 - [x] End-to-end import of every sample section via the API
 - [x] Filter/sort sanity checks (quantization ordering, tps ranges)
-- [ ] Optional: Postgres smoke test
+- [x] Standalone + PostgreSQL smoke test (PG 18.6): clean build, Flyway migration applied, Hibernate validate passed, import + persistence across restarts. Required `org.flywaydb:flyway-database-postgresql` runtime dep — Flyway ≥10 needs the database-specific module
+- [ ] MariaDB smoke test — scrapped for now (if revisited: same pattern, the module is `org.flywaydb:flyway-mysql`)
+
+## Phase 8 — Later: parameter normalization (planned, not started)
+
+Background: llama-bench parameters appear in three spellings — CLI short form (`-ncmoe`), CLI long form (`--n-cpu-moe`) and a table-header variant (`n_cpu_moe`). The full parameter list is captured in `llama-bench-help.txt` (repo root). Unknown parameters currently pass through into the `params` JSON as-is, which is the intended fallback.
+
+- [ ] Canonical parameter map: explicitly enumerate all known llama-bench parameters from `llama-bench-help.txt` — short form / long form / table-header variant → one canonical name; unknown parameters keep the as-is fallback
+- [ ] Special semantics for the n_cpu_moe family: `-ncmoe/--n-cpu-moe <n>` (exact expert count) vs `cmoe`/`cpu-moe` ("all") — treat as one logical attribute with distinct value semantics; decide normalization/storage when implemented

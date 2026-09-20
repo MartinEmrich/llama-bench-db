@@ -85,6 +85,9 @@ public class Result {
     @Column(name = "tg_deviation")
     private Double tgDeviation;
 
+    @Column(name = "build", length = 64)
+    private String build;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "params", nullable = false)
     private Map<String, Object> params = new LinkedHashMap<>();
@@ -251,6 +254,14 @@ public class Result {
 
     public void setTgDeviation(Double tgDeviation) {
         this.tgDeviation = tgDeviation;
+    }
+
+    public String getBuild() {
+        return build;
+    }
+
+    public void setBuild(String build) {
+        this.build = build;
     }
 
     public Map<String, Object> getParams() {

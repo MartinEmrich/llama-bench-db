@@ -11,20 +11,25 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/results")
 public class ResultController {
 
-    public record ImportRequest(Long computerId, Long versionId, Long modelId, String text, Boolean acknowledgeWarnings) {
+    public record ImportRequest(Long computerId, Long versionId, Long modelId, String text,
+                                String build, Boolean acknowledgeWarnings) {
     }
 
     private static final Map<String, String> SORTABLE = Map.ofEntries(
@@ -87,15 +92,39 @@ public class ResultController {
 
     @PostMapping("/import")
     public ResponseEntity<ImportResponse> importRun(@RequestBody ImportRequest req) {
-        if (req.computerId() == null || req.versionId() == null || req.modelId() == null || req.text() == null) {
-            throw new BadRequestException("computerId, versionId, modelId and text are required");
+        if (req.computerId() == null || req.modelId() == null || req.text() == null) {
+            throw new BadRequestException("computerId, modelId and text are required");
         }
         ImportResponse response = importService.importRun(
-                req.computerId(), req.versionId(), req.modelId(), req.text(),
+                req.computerId(), req.versionId(), req.modelId(), req.text(), req.build(),
                 Boolean.TRUE.equals(req.acknowledgeWarnings()));
         if (response.blocked()) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteResult(@PathVariable Long id) {
+        if (!resultRepo.existsById(id)) {
+            throw new NotFoundException("result " + id + " not found");
+        }
+        resultRepo.deleteById(id);
+    }
+
+    /** Newest non-null build for a computer, optionally restricted to a backend. */
+    @GetMapping("/latest-build")
+    public ResponseEntity<Map<String, String>> latestBuild(
+            @RequestParam Long computerId,
+            @RequestParam(required = false) String backend) {
+        List<String> builds = resultRepo.findLatestBuilds(
+                computerId,
+                backend == null || backend.isBlank() ? null : backend.strip(),
+                PageRequest.of(0, 1));
+        if (builds.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(Map.of("build", builds.get(0)));
     }
 }

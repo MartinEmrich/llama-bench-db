@@ -57,7 +57,7 @@ public class ExportController {
                         r.getModelString(), r.getSizeGiBObserved(), r.getBackend(), r.getDevices(),
                         r.getNgl(), r.getTypeK(), r.getTypeV(), r.getFa(), r.getThreads(), r.getTs(), r.getLoadMode(),
                         r.getPpTokens(), r.getTgTokens(), r.getPpTps(), r.getTgTps(), r.getPpDeviation(), r.getTgDeviation(),
-                        r.getParams()))
+                        r.getBuild(), r.getParams()))
                 .toList();
         return new ExportDto(Instant.now(), computers, models, results);
     }
@@ -134,6 +134,7 @@ public class ExportController {
             res.setTgTps(r.tgTps());
             res.setPpDeviation(r.ppDeviation());
             res.setTgDeviation(r.tgDeviation());
+            res.setBuild(r.build());
             res.setParams(r.params() != null ? r.params() : Map.of());
             resultRepo.save(res);
             count++;

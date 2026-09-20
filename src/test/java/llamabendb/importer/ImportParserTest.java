@@ -8,6 +8,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -125,5 +126,66 @@ class ImportParserTest {
                 """;
         ImportParser.ParseResult r = parser.parse(text);
         assertEquals(1, r.datasets().size());
+        assertEquals("12345", r.datasets().get(0).build());
+    }
+
+    @Test
+    void buildLineAfterTableIsCaptured() {
+        String text = """
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | m 4B Q4 | 2.5 GiB | CPU | pp512 | 0.7 ± 0.0 |
+                | m 4B Q4 | 2.5 GiB | CPU | tg128 | 0.6 ± 0.1 |
+
+                build: 861bd3c10 (11029)
+                """;
+        ImportParser.Dataset d = parser.parse(text).datasets().get(0);
+        assertEquals("861bd3c10 (11029)", d.build());
+    }
+
+    @Test
+    void twoTablesKeepTheirOwnBuildLines() {
+        String text = """
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | m 4B Q4 | 2.5 GiB | CPU | pp512 | 0.7 ± 0.0 |
+                | m 4B Q4 | 2.5 GiB | CPU | tg128 | 0.6 ± 0.1 |
+
+                build: aaa111 (1)
+
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | m 4B Q4 | 2.5 GiB | CPU | pp512 | 0.8 ± 0.0 |
+                | m 4B Q4 | 2.5 GiB | CPU | tg128 | 0.7 ± 0.1 |
+
+                build: bbb222 (2)
+                """;
+        ImportParser.ParseResult r = parser.parse(text);
+        assertEquals(2, r.datasets().size());
+        assertEquals("aaa111 (1)", r.datasets().get(0).build());
+        assertEquals("bbb222 (2)", r.datasets().get(1).build());
+    }
+
+    @Test
+    void pasteWithoutBuildLineYieldsNullBuild() {
+        String text = """
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | m 4B Q4 | 2.5 GiB | CPU | pp512 | 0.7 ± 0.0 |
+                | m 4B Q4 | 2.5 GiB | CPU | tg128 | 0.6 ± 0.1 |
+                """;
+        assertNull(parser.parse(text).datasets().get(0).build());
+    }
+
+    @Test
+    void buildLineBeforeAnyTableIsIgnored() {
+        String text = """
+                build: orphan (0)
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | m 4B Q4 | 2.5 GiB | CPU | pp512 | 0.7 ± 0.0 |
+                | m 4B Q4 | 2.5 GiB | CPU | tg128 | 0.6 ± 0.1 |
+                """;
+        assertNull(parser.parse(text).datasets().get(0).build());
     }
 }

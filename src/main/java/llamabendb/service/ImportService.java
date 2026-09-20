@@ -42,11 +42,22 @@ public class ImportService {
     }
 
     @Transactional
-    public ImportResponse importRun(Long computerId, Long computerVersionId, Long modelId, String text, boolean acknowledgeWarnings) {
-        ComputerVersion version = versionRepo.findById(computerVersionId)
-                .orElseThrow(() -> new NotFoundException("computer version " + computerVersionId + " not found"));
-        if (!version.getComputer().getId().equals(computerId)) {
-            throw new BadRequestException("version " + computerVersionId + " does not belong to computer " + computerId);
+    public ImportResponse importRun(Long computerId, Long computerVersionId, Long modelId, String text,
+                                    String build, boolean acknowledgeWarnings) {
+        ComputerVersion version;
+        if (computerVersionId == null) {
+            // No explicit version: attach to the newest one of the computer.
+            List<ComputerVersion> versions = versionRepo.findByComputerIdOrderByCreatedAtDesc(computerId);
+            if (versions.isEmpty()) {
+                throw new BadRequestException("computer " + computerId + " has no versions");
+            }
+            version = versions.get(0);
+        } else {
+            version = versionRepo.findById(computerVersionId)
+                    .orElseThrow(() -> new NotFoundException("computer version " + computerVersionId + " not found"));
+            if (!version.getComputer().getId().equals(computerId)) {
+                throw new BadRequestException("version " + computerVersionId + " does not belong to computer " + computerId);
+            }
         }
         Model model = modelRepo.findById(modelId)
                 .orElseThrow(() -> new NotFoundException("model " + modelId + " not found"));
@@ -72,9 +83,10 @@ public class ImportService {
             return new ImportResponse(List.of(), warnings, true);
         }
 
+        String fallbackBuild = build == null || build.isBlank() ? null : build.strip();
         List<Result> results = new ArrayList<>();
         for (ImportParser.Dataset d : parsed.datasets()) {
-            Result r = toEntity(d, version, model);
+            Result r = toEntity(d, version, model, fallbackBuild);
             addDeviceWarning(r, warnings);
             results.add(r);
         }
@@ -103,7 +115,7 @@ public class ImportService {
         }
     }
 
-    private Result toEntity(ImportParser.Dataset d, ComputerVersion version, Model model) {
+    private Result toEntity(ImportParser.Dataset d, ComputerVersion version, Model model, String fallbackBuild) {
         Map<String, String> f = d.fields();
         Result r = new Result();
         r.setComputerVersion(version);
@@ -132,6 +144,8 @@ public class ImportService {
         r.setTgTps(d.tgTps());
         r.setPpDeviation(d.ppDeviation());
         r.setTgDeviation(d.tgDeviation());
+        // A build line in the paste wins over the form-supplied value.
+        r.setBuild(d.build() != null ? d.build() : fallbackBuild);
         Map<String, Object> params = new LinkedHashMap<>();
         f.forEach((k, v) -> {
             if (!KNOWN_COLUMNS.contains(k)) {

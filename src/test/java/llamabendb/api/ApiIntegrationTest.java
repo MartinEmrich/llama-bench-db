@@ -17,6 +17,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
@@ -75,6 +76,18 @@ class ApiIntegrationTest {
     private void importText(long computerId, long versionId, long modelId, String text) throws Exception {
         postJson("/api/results/import", Map.of(
                 "computerId", computerId, "versionId", versionId, "modelId", modelId, "text", text));
+    }
+
+    private void importTextWithBuild(long computerId, long versionId, long modelId, String text, String build) throws Exception {
+        var body = new java.util.HashMap<String, Object>();
+        body.put("computerId", computerId);
+        body.put("versionId", versionId);
+        body.put("modelId", modelId);
+        body.put("text", text);
+        if (build != null) {
+            body.put("build", build);
+        }
+        postJson("/api/results/import", body);
     }
 
     @Test
@@ -157,6 +170,67 @@ class ApiIntegrationTest {
         importText(computer, version, model, section);
 
         assertEquals(1, getJson("/api/results?computerId=" + computer).get("totalElements").asLong());
+    }
+
+    @Test
+    void importStoresBuildFromPasteLineAndRequestBody() throws Exception {
+        long computer = createComputer("build-box");
+        long version = versionOf(computer);
+        long model = createModel("acme/Build-4B-GGUF:Q4_K_M", null);
+
+        importTextWithBuild(computer, version, model, MINIMAL_TABLE + "\nbuild: aaa111 (1)\n", null);
+        importTextWithBuild(computer, version, model, MINIMAL_TABLE, "bbb222 (2)");
+
+        JsonNode results = getJson("/api/results?computerId=" + computer).get("content");
+        assertEquals(2, results.size());
+        // default sort is importedAt desc, so the second import comes first
+        assertEquals("bbb222 (2)", results.get(0).get("build").asText());
+        assertEquals("aaa111 (1)", results.get(1).get("build").asText());
+    }
+
+    @Test
+    void latestBuildReturnsNewestForComputerAndBackend() throws Exception {
+        long computer = createComputer("latest-build-box");
+        long version = versionOf(computer);
+        long model = createModel("acme/LB-4B-GGUF:Q4_K_M", null);
+        importTextWithBuild(computer, version, model, MINIMAL_TABLE + "\nbuild: old (1)\n", null);
+        importTextWithBuild(computer, version, model, MINIMAL_TABLE + "\nbuild: new (2)\n", null);
+
+        assertEquals("new (2)", getJson("/api/results/latest-build?computerId=" + computer).get("build").asText());
+        assertEquals("new (2)", getJson("/api/results/latest-build?computerId=" + computer + "&backend=CPU").get("build").asText());
+
+        mvc.perform(get("/api/results/latest-build?computerId=" + computer + "&backend=Vulkan"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteResultRemovesItAnd404sWhenUnknown() throws Exception {
+        long computer = createComputer("delete-box");
+        long version = versionOf(computer);
+        long model = createModel("acme/Del-4B-GGUF:Q4_K_M", null);
+        importText(computer, version, model, MINIMAL_TABLE);
+
+        JsonNode r = getJson("/api/results?computerId=" + computer).get("content").get(0);
+        mvc.perform(delete("/api/results/" + r.get("id").asLong()))
+                .andExpect(status().isNoContent());
+        assertEquals(0, getJson("/api/results?computerId=" + computer).get("totalElements").asLong());
+
+        mvc.perform(delete("/api/results/" + r.get("id").asLong()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void importWithoutVersionUsesNewest() throws Exception {
+        long computer = createComputer("newest-version-box");
+        long model = createModel("acme/NV-4B-GGUF:Q4_K_M", null);
+        postJson("/api/computers/" + computer + "/versions", Map.of("description", "v2"));
+
+        postJson("/api/results/import", Map.of(
+                "computerId", computer, "modelId", model, "text", MINIMAL_TABLE));
+
+        JsonNode r = getJson("/api/results?computerId=" + computer).get("content").get(0);
+        JsonNode newest = getJson("/api/computers/" + computer).get("versions").get(0);
+        assertEquals(newest.get("createdAt").asText(), r.get("versionDate").asText());
     }
 
     @Test

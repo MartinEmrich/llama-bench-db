@@ -28,6 +28,7 @@ public record ResultDto(
         Double tgTps,
         Double ppDeviation,
         Double tgDeviation,
+        String build,
         Map<String, Object> params
 ) {
 }

@@ -98,6 +98,22 @@ button.small { padding: 3px 8px; font-size: 12px; }
 .param { margin-right: 8px; }
 .param-val { display: inline-block; min-width: 4ch; }
 
+.details-box {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: #1c2430;
+  color: #f2f5f9;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  min-width: 200px;
+  max-width: 320px;
+}
+.details-row { display: flex; gap: 10px; padding: 1px 0; }
+.details-row .k { color: #9aa7b8; min-width: 90px; flex-shrink: 0; }
+
 .muted { color: var(--muted); }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 .actions { display: flex; gap: 6px; }

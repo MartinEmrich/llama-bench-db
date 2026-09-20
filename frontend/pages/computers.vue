@@ -44,7 +44,7 @@ await load()
     <div class="panel">
       <h2 style="margin-top: 0">Add computer</h2>
       <div class="formrow">
-        <div class="filter"><label>Name</label><input v-model="newName" placeholder="e.g. gwaihir"></div>
+        <div class="filter"><label>Name</label><input v-model="newName" placeholder=""></div>
         <div class="filter wide"><label>Description (first version)</label><input v-model="newDescription" placeholder="hardware, OS, drivers…"></div>
         <button :disabled="busy || !newName.trim()" @click="create">Add</button>
       </div>

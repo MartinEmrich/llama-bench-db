@@ -27,31 +27,35 @@ public final class ImportParser {
             double ppTps,
             double tgTps,
             double ppDeviation,
-            double tgDeviation
+            double tgDeviation,
+            String build
     ) {
     }
 
     public record ParseResult(List<Dataset> datasets, List<String> modelStrings, int emptyTablesSkipped) {
     }
 
-    private record Table(int line, List<Map<String, String>> rows) {
+    private record Table(int line, int lastRowIdx, List<Map<String, String>> rows) {
     }
 
     private static final Pattern TPS = Pattern.compile("^\\s*([0-9]+(?:\\.[0-9]+)?)\\s*±\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
     private static final Pattern PP_TEST = Pattern.compile("^pp(\\d+)$");
     private static final Pattern TG_TEST = Pattern.compile("^tg(\\d+)$");
     private static final Pattern SIZE = Pattern.compile("^\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(GiB|MiB)\\s*$");
+    private static final Pattern BUILD_LINE = Pattern.compile("^\\s*build:\\s*(\\S.*?)\\s*$", Pattern.CASE_INSENSITIVE);
 
     public ParseResult parse(String text) {
-        List<Table> tables = extractTables(text);
+        String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n");
+        List<Table> tables = extractTables(lines);
         List<Dataset> datasets = new ArrayList<>();
         int emptySkipped = 0;
-        for (Table table : tables) {
+        for (int s = 0; s < tables.size(); s++) {
+            Table table = tables.get(s);
             if (table.rows().isEmpty()) {
                 emptySkipped++;
                 continue;
             }
-            datasets.addAll(toDatasets(table));
+            datasets.addAll(toDatasets(table, findBuild(lines, tables, s)));
         }
         if (datasets.isEmpty()) {
             throw new ImportException("no result data found in the pasted text");
@@ -68,8 +72,25 @@ public final class ImportParser {
         return new ParseResult(datasets, models, emptySkipped);
     }
 
-    private List<Table> extractTables(String text) {
-        String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n");
+    /**
+     * The llama-bench build line (e.g. "build: 861bd3c10 (11029)") printed after a
+     * table block is attributed to that table; the last match in the gap before the
+     * next table wins. Build lines before any table are ignored.
+     */
+    private String findBuild(String[] lines, List<Table> tables, int index) {
+        Table table = tables.get(index);
+        int gapEnd = index + 1 < tables.size() ? tables.get(index + 1).line() - 1 : lines.length;
+        String build = null;
+        for (int i = table.lastRowIdx() + 1; i < gapEnd; i++) {
+            Matcher m = BUILD_LINE.matcher(lines[i]);
+            if (m.matches()) {
+                build = m.group(1);
+            }
+        }
+        return build;
+    }
+
+    private List<Table> extractTables(String[] lines) {
         List<Integer> starts = new ArrayList<>();
         for (int i = 0; i + 1 < lines.length; i++) {
             if (isHeaderLine(lines[i]) && isSeparatorLine(lines[i + 1])) {
@@ -82,6 +103,7 @@ public final class ImportParser {
             int end = s + 1 < starts.size() ? starts.get(s + 1) : lines.length;
             List<String> header = splitRow(lines[headerIdx]);
             List<Map<String, String>> rows = new ArrayList<>();
+            int lastRowIdx = headerIdx + 1;
             for (int i = headerIdx + 2; i < end; i++) {
                 String line = lines[i];
                 if (line.isBlank()) {
@@ -101,8 +123,9 @@ public final class ImportParser {
                     row.put(header.get(c), cells.get(c));
                 }
                 rows.add(row);
+                lastRowIdx = i;
             }
-            tables.add(new Table(headerIdx + 1, rows));
+            tables.add(new Table(headerIdx + 1, lastRowIdx, rows));
         }
         return tables;
     }
@@ -138,7 +161,7 @@ public final class ImportParser {
         return Arrays.stream(s.split("\\|", -1)).map(String::strip).toList();
     }
 
-    private List<Dataset> toDatasets(Table table) {
+    private List<Dataset> toDatasets(Table table, String build) {
         boolean hasTestColumn = table.rows().get(0).containsKey("test");
         if (!hasTestColumn) {
             throw new ImportException("table at line " + table.line() + " has no 'test' column");
@@ -196,7 +219,8 @@ public final class ImportParser {
                     parseSize(ppRow.get("size")),
                     fields,
                     ppTokens, tgTokens,
-                    pp[0], tg[0], pp[1], tg[1]));
+                    pp[0], tg[0], pp[1], tg[1],
+                    build));
         }
         return datasets;
     }

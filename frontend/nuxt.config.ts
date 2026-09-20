@@ -6,7 +6,8 @@ export default defineNuxtConfig({
       proxy: {
         // Nuxt 4's devProxy (nitro) does not apply to the Vite SPA fallback,
         // so the API proxy has to be configured on the Vite dev server.
-        '/api': 'http://localhost:8080'
+        // Points at the sandbox dev instance; standalone builds use :8080.
+        '/api': 'http://localhost:8081'
       }
     }
   },
