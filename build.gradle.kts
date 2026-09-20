@@ -23,6 +23,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.postgresql:postgresql")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
