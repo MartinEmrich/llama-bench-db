@@ -1,0 +1,30 @@
+$ build/bin/llama-bench -hf test/moonspire-27B-GGUF:TQ1_0 -fa on  --device Vulkan0
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = Intel(R) Iris(R) Xe Graphics (TGL GT2) (Intel open-source Mesa driver) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 32 | shared memory: 65536 | int dot: 1 | matrix cores: none
+Downloading moonspire-27B-PTQ1_0.gguf ─────────────────────────────── 100%
+| model                          |       size |     params | backend    | ngl |  fa | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ------------ | --------------: | -------------------: |
+| moonspire 27B PTQ1_0 - 1.75 bpw ternary (group 128) |   5.53 GiB |    26.90 B | Vulkan     |  -1 |   1 | Vulkan0      |           pp512 |         25.48 ± 0.15 |
+| moonspire 27B PTQ1_0 - 1.75 bpw ternary (group 128) |   5.53 GiB |    26.90 B | Vulkan     |  -1 |   1 | Vulkan0      |           tg128 |          0.39 ± 0.05 |
+
+
+
+test@test:~$ build/bin/llama-bench -hf test/moonspire-27B-GGUF:Q2_0 -fa on  --device none
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = Intel(R) Iris(R) Xe Graphics (TGL GT2) (Intel open-source Mesa driver) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 32 | shared memory: 65536 | int dot: 1 | matrix cores: none
+| model                          |       size |     params | backend    | ngl |  fa | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ------------ | --------------: | -------------------: |
+| moonspire 27B PQ2_0 - 2.13 bpw (group 128) |   6.70 GiB |    26.90 B | Vulkan     |  -1 |   1 | none         |           pp512 |          3.77 ± 0.13 |
+| moonspire 27B PQ2_0 - 2.13 bpw (group 128) |   6.70 GiB |    26.90 B | Vulkan     |  -1 |   1 | none         |           tg128 |          2.05 ± 0.14 |
+
+build: 9a9394a89 (10709)
+
+
+
+test@test:~$ build/bin/llama-bench -hf test/moonspire-27B-GGUF:Q2_0 -fa on  --device Vulkan0
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = Intel(R) Iris(R) Xe Graphics (TGL GT2) (Intel open-source Mesa driver) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 32 | shared memory: 65536 | int dot: 1 | matrix cores: none
+| model                          |       size |     params | backend    | ngl |  fa | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ------------ | --------------: | -------------------: |
+| moonspire 27B PQ2_0 - 2.13 bpw (group 128) |   6.70 GiB |    26.90 B | Vulkan     |  -1 |   1 | Vulkan0      |           pp512 |          3.96 ± 0.40 |
+| moonspire 27B PQ2_0 - 2.13 bpw (group 128) |   6.70 GiB |    26.90 B | Vulkan     |  -1 |   1 | Vulkan0      |           tg128 |          1.19 ± 0.03 |

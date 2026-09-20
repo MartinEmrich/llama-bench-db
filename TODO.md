@@ -64,7 +64,7 @@ See `PLAN.md` for requirements. This file tracks the build; check items off as t
 
 ## Phase 6 — Tests
 
-- [x] Parser fixtures from `samples/`: all four files; surfacego.txt as the multi-model rejection case; its three sections (split at `---`) as valid single-model fixtures
+- [x] Sanitized parser fixtures in `src/test/resources/samples/` (fantasy model names, loaded via classpath): `test-multi-model-sections.txt` (multi-model rejection + three `---` sections as single-model fixtures), `test-multi-model-rejection.txt`, `test-noise-and-unknown-columns.txt` (empty tables, `^C`/error noise, unknown columns, build lines), `test-two-datasets-one-paste.txt`
 - [x] Synthetic malformed inputs: missing tg row, inconsistent rows within a group, garbage-only paste, MiB sizes, `^C` noise
 - [x] Repository + API integration tests on in-memory H2
 

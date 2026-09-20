@@ -1,0 +1,97 @@
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 30 -ts 30/20
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+| dragonspine A3B IQ3_XXS - 3.0625 bpw |  76.32 GiB |   176.94 B | Vulkan     |  30 |   1 | 30.00/20.00  |       mmap | off        |           pp512 |        33.48 ± 24.09 |
+| dragonspine A3B IQ3_XXS - 3.0625 bpw |  76.32 GiB |   176.94 B | Vulkan     |  30 |   1 | 30.00/20.00  |       mmap | off        |           tg128 |          7.33 ± 1.02 |
+
+build: 861bd3c10 (11029)
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 30/20 -ncmoe 26
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+^C
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 26
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+^C
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 26
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+^C
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode none --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 26
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+radv/amdgpu: Not enough memory for command submission.
+llama_bench: error: failed to load model '/home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf'
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode none --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 30
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+radv/amdgpu: Not enough memory for command submission.
+llama_bench: error: failed to load model '/home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf'
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode none --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 49
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+radv/amdgpu: Not enough memory for command submission.
+llama_bench: error: failed to load model '/home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf'
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 30
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+^C
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 26
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+^C
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode off --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 20
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | ---------- | --------------: | -------------------: |
+^C^[[A
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode auto --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 26
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | --------------: | -------------------: |
+| dragonspine A3B IQ3_XXS - 3.0625 bpw |  76.32 GiB |   176.94 B | Vulkan     |  99 |         26 |   1 | 36.00/13.00  |       mmap |           pp512 |         43.91 ± 0.73 |
+| dragonspine A3B IQ3_XXS - 3.0625 bpw |  76.32 GiB |   176.94 B | Vulkan     |  99 |         26 |   1 | 36.00/13.00  |       mmap |           tg128 |          9.87 ± 0.06 |
+
+build: 861bd3c10 (11029)
+test@test:~$ /home/test/upstream/llama.cpp/build/bin/llama-bench --flash-attn on --lazy-mode auto --load-mode mmap --model /home/test/models/dragonspine-flash-next-GGUF/UD-IQ3_XXS/dragonspine-flash-next-UD-IQ3_XXS-00001-of-00003.gguf --n-gpu-layers 99 -ts 36/13 -ncmoe 24
+
+ggml_vulkan: Found 2 Vulkan devices:
+ggml_vulkan: 0 = AMD Radeon RX 7900 XTX (RADV NAVI31) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+ggml_vulkan: 1 = AMD Radeon RX 7800 XT (RADV NAVI32) (radv) | uma: 0 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa | ts           |         lm |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ------------ | ---------: | --------------: | -------------------: |
+| dragonspine A3B IQ3_XXS - 3.0625 bpw |  76.32 GiB |   176.94 B | Vulkan     |  99 |         24 |   1 | 36.00/13.00  |       mmap |           pp512 |         44.68 ± 1.17 |
+| dragonspine A3B IQ3_XXS - 3.0625 bpw |  76.32 GiB |   176.94 B | Vulkan     |  99 |         24 |   1 | 36.00/13.00  |       mmap |           tg128 |         10.23 ± 0.06 |
+
+build: 861bd3c10 (11029)

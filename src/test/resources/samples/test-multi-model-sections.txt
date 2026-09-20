@@ -1,0 +1,28 @@
+test@test:~$ build/bin/llama-bench -hf test/moonspire-4B-GGUF:Q4_K_M -ctk q8_0 -ctv q8_0 -fa on --load-mode none --lazy-mode off
+Downloading moonspire-4B-Q4_K_M.gguf ───────────────────────────────── 100%
+| model                          |       size |     params | backend    | threads | type_k | type_v |  fa |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | -----: | -----: | --: | ---------: | ---------- | --------------: | -------------------: |
+| moonspire 4B Q4_K - Medium    |   2.54 GiB |     4.21 B | CPU        |       2 |   q8_0 |   q8_0 |   1 |       none | off        |           pp512 |          0.71 ± 0.00 |
+| moonspire 4B Q4_K - Medium    |   2.54 GiB |     4.21 B | CPU        |       2 |   q8_0 |   q8_0 |   1 |       none | off        |           tg128 |          0.58 ± 0.00 |
+
+build: 5b59b83f4 (11051)
+
+---
+
+test@test:~$ build/bin/llama-bench -hf test/moonspire-2B-GGUF:Q4_K_M -ctk q8_0 -ctv q8_0 -fa on --load-mode none --lazy-mode off
+Downloading moonspire-2B-Q4_K_M.gguf ───────────────────────────────── 100%
+| model                          |       size |     params | backend    | threads | type_k | type_v |  fa |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | -----: | -----: | --: | ---------: | ---------- | --------------: | -------------------: |
+
+| moonspire 2B Q4_K - Medium    |   1.18 GiB |     1.88 B | CPU        |       2 |   q8_0 |   q8_0 |   1 |       none | off        |           pp512 |          1.82 ± 0.00 |
+| moonspire 2B Q4_K - Medium    |   1.18 GiB |     1.88 B | CPU        |       2 |   q8_0 |   q8_0 |   1 |       none | off        |           tg128 |          1.29 ± 0.01 |
+
+build: 5b59b83f4 (11051)
+
+---
+
+Downloading moonspire-0.8B-Q8_0.gguf ───────────────────────────────── 100%
+| model                          |       size |     params | backend    | threads | type_k | type_v |  fa |         lm | lazy_mode  |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | -----: | -----: | --: | ---------: | ---------- | --------------: | -------------------: |
+| moonspire 0.8B Q8_0           | 763.78 MiB |   752.39 M | CPU        |       2 |   q8_0 |   q8_0 |   1 |       none | off        |           pp512 |         11.58 ± 0.01 |
+| moonspire 0.8B Q8_0           | 763.78 MiB |   752.39 M | CPU        |       2 |   q8_0 |   q8_0 |   1 |       none | off        |           tg128 |          6.94 ± 0.01 |

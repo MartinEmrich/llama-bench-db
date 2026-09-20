@@ -1,10 +1,9 @@
 package llamabendb.importer;
 
+import llamabendb.TestResources;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,23 +16,23 @@ class ImportParserTest {
     private final ImportParser parser = new ImportParser();
 
     private String sample(String name) throws IOException {
-        return Files.readString(Path.of("samples", name));
+        return TestResources.readSample(name);
     }
 
     @Test
-    void surfacegoFullFileIsRejectedAsMultiModel() throws IOException {
-        ImportException e = assertThrows(ImportException.class, () -> parser.parse(sample("surfacego.txt")));
+    void multiModelSectionsFileIsRejectedAsMultiModel() throws IOException {
+        ImportException e = assertThrows(ImportException.class, () -> parser.parse(sample("test-multi-model-sections.txt")));
         assertTrue(e.getMessage().contains("multiple models"));
-        assertTrue(e.getMessage().contains("qwen35 4B Q4_K - Medium"));
+        assertTrue(e.getMessage().contains("moonspire 4B Q4_K - Medium"));
     }
 
     @Test
-    void surfacegoSectionsParseToSingleDatasets() throws IOException {
-        String[] sections = sample("surfacego.txt").split("(?m)^---\\s*$");
+    void multiModelSectionsParseToSingleDatasets() throws IOException {
+        String[] sections = sample("test-multi-model-sections.txt").split("(?m)^---\\s*$");
         ImportParser.ParseResult r = parser.parse(sections[0]);
         assertEquals(1, r.datasets().size());
         ImportParser.Dataset d = r.datasets().get(0);
-        assertEquals("qwen35 4B Q4_K - Medium", d.modelString());
+        assertEquals("moonspire 4B Q4_K - Medium", d.modelString());
         assertEquals(2.54, d.sizeGiB(), 1e-9);
         assertEquals(512, d.ppTokens());
         assertEquals(128, d.tgTokens());
@@ -50,11 +49,11 @@ class ImportParserTest {
     }
 
     @Test
-    void auroraSkipsEmptyTablesAndCapturesUnknownColumns() throws IOException {
-        ImportParser.ParseResult r = parser.parse(sample("aurora-qwen3.8-flash-next.txt"));
+    void noiseFileSkipsEmptyTablesAndCapturesUnknownColumns() throws IOException {
+        ImportParser.ParseResult r = parser.parse(sample("test-noise-and-unknown-columns.txt"));
         assertEquals(3, r.datasets().size());
         assertEquals(1, r.modelStrings().size());
-        assertEquals("qwen4exp A3B IQ3_XXS - 3.0625 bpw", r.modelStrings().get(0));
+        assertEquals("dragonspine A3B IQ3_XXS - 3.0625 bpw", r.modelStrings().get(0));
 
         long withNcmoe = r.datasets().stream().filter(d -> d.fields().containsKey("n_cpu_moe")).count();
         assertEquals(2, withNcmoe);
@@ -67,14 +66,14 @@ class ImportParserTest {
     }
 
     @Test
-    void bonsaiFullFileIsMultiModel() throws IOException {
-        ImportException e = assertThrows(ImportException.class, () -> parser.parse(sample("bonsai-gwaihir.txt")));
+    void multiModelRejectionFileIsMultiModel() throws IOException {
+        ImportException e = assertThrows(ImportException.class, () -> parser.parse(sample("test-multi-model-rejection.txt")));
         assertTrue(e.getMessage().contains("multiple models"));
     }
 
     @Test
-    void qwen359bHasTwoDatasetsInOnePaste() throws IOException {
-        ImportParser.ParseResult r = parser.parse(sample("qwen3.5-9B-gwaihir.txt"));
+    void twoDatasetsOnePasteHasTwoDatasets() throws IOException {
+        ImportParser.ParseResult r = parser.parse(sample("test-two-datasets-one-paste.txt"));
         assertEquals(2, r.datasets().size());
         assertEquals(1, r.modelStrings().size());
         assertTrue(r.datasets().stream().anyMatch(d -> "none".equals(d.fields().get("dev"))));

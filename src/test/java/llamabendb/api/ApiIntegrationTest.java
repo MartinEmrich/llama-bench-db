@@ -1,5 +1,6 @@
 package llamabendb.api;
 
+import llamabendb.TestResources;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,9 +10,6 @@ import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -148,7 +146,7 @@ class ApiIntegrationTest {
         long computer = createComputer("multi-model-box");
         long version = versionOf(computer);
         long model = createModel("acme/Multi-4B-GGUF:Q4_K_M", null);
-        String text = Files.readString(Path.of("samples", "surfacego.txt"));
+        String text = TestResources.readSample("test-multi-model-sections.txt");
 
         String error = mvc.perform(post("/api/results/import")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -163,8 +161,8 @@ class ApiIntegrationTest {
     void sampleFileImportsEndToEnd() throws Exception {
         long computer = createComputer("e2e-box");
         long version = versionOf(computer);
-        long model = createModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M", null);
-        String text = Files.readString(Path.of("samples", "surfacego.txt"));
+        long model = createModel("acme/E2E-4B-GGUF:Q4_K_M", null);
+        String text = TestResources.readSample("test-multi-model-sections.txt");
         String section = text.split("(?m)^---\\s*$")[0];
 
         importText(computer, version, model, section);
