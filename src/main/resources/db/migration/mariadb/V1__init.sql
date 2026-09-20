@@ -1,0 +1,53 @@
+CREATE TABLE computer (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    CONSTRAINT uq_computer_name UNIQUE (name)
+);
+
+CREATE TABLE computer_version (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    computer_id BIGINT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    description VARCHAR(4000),
+    CONSTRAINT fk_cv_computer FOREIGN KEY (computer_id) REFERENCES computer (id)
+);
+
+CREATE TABLE model (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    model_id VARCHAR(255) NOT NULL,
+    quantization VARCHAR(64) NOT NULL,
+    size_gib DOUBLE,
+    quant_sort_key VARCHAR(128) NOT NULL,
+    CONSTRAINT uq_model_id_quant UNIQUE (model_id, quantization)
+);
+
+CREATE TABLE result (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    computer_version_id BIGINT NOT NULL,
+    model_id BIGINT NOT NULL,
+    imported_at DATETIME(6) NOT NULL,
+    model_string VARCHAR(255),
+    size_gib_observed DOUBLE,
+    backend VARCHAR(255),
+    devices VARCHAR(255),
+    ngl INT NOT NULL DEFAULT -1,
+    type_k VARCHAR(32) NOT NULL DEFAULT 'f16',
+    type_v VARCHAR(32) NOT NULL DEFAULT 'f16',
+    fa TINYINT(1) NOT NULL DEFAULT 0,
+    threads INT,
+    ts VARCHAR(255),
+    load_mode VARCHAR(32) NOT NULL DEFAULT 'auto',
+    pp_tokens INT NOT NULL,
+    tg_tokens INT NOT NULL,
+    pp_tps DOUBLE,
+    tg_tps DOUBLE,
+    pp_deviation DOUBLE,
+    tg_deviation DOUBLE,
+    params JSON NOT NULL,
+    CONSTRAINT fk_result_cv FOREIGN KEY (computer_version_id) REFERENCES computer_version (id),
+    CONSTRAINT fk_result_model FOREIGN KEY (model_id) REFERENCES model (id)
+);
+
+CREATE INDEX idx_result_computer_version ON result (computer_version_id);
+CREATE INDEX idx_result_model ON result (model_id);

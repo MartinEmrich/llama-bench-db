@@ -6,3 +6,20 @@ build
 
 # Ignore Kotlin plugin data
 .kotlin
+
+# H2 file database
+data/
+
+# Frontend
+node_modules/
+.nuxt/
+.output/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log

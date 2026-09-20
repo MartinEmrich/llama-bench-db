@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: llama-bench-db
+  datasource:
+    url: jdbc:h2:file:./data/llamabendb
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    locations: classpath:db/migration/h2
+
+server:
+  port: 8080
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/llamabendb}
+    username: ${DB_USER:llamabendb}
+    password: ${DB_PASSWORD:}
+  flyway:
+    locations: classpath:db/migration/postgres
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mariadb
+  datasource:
+    url: ${DB_URL:jdbc:mariadb://localhost:3306/llamabendb}
+    username: ${DB_USER:llamabendb}
+    password: ${DB_PASSWORD:}
+  flyway:
+    locations: classpath:db/migration/mariadb
