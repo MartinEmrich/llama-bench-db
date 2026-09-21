@@ -29,10 +29,10 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/computers")
 public class ComputerController {
 
-    public record CreateComputerRequest(String name, String description) {
+    public record CreateComputerRequest(String name, String hostname, String description) {
     }
 
-    public record UpdateComputerRequest(String name) {
+    public record UpdateComputerRequest(String name, String hostname) {
     }
 
     public record CreateVersionRequest(String description) {
@@ -63,7 +63,7 @@ public class ComputerController {
         List<VersionDto> versions = versionRepo.findByComputerIdOrderByCreatedAtDesc(id).stream()
                 .map(v -> new VersionDto(v.getId(), v.getCreatedAt(), v.getDescription()))
                 .toList();
-        return new ComputerDetailDto(c.getId(), c.getName(), versions);
+        return new ComputerDetailDto(c.getId(), c.getName(), c.getHostname(), versions);
     }
 
     @PostMapping
@@ -76,6 +76,7 @@ public class ComputerController {
         }
         Computer c = new Computer();
         c.setName(name);
+        c.setHostname(normalizeHostname(req.hostname()));
         c = computerRepo.save(c);
         addVersion(c, req.description());
         return toListDto(c, versionRepo.findByComputerIdOrderByCreatedAtDesc(c.getId()));
@@ -90,6 +91,10 @@ public class ComputerController {
             throw new ConflictException("a computer named '" + name + "' already exists");
         }
         c.setName(name);
+        // null = unchanged, blank = cleared (the form always sends both fields)
+        if (req.hostname() != null) {
+            c.setHostname(normalizeHostname(req.hostname()));
+        }
         return toListDto(c, versionRepo.findByComputerIdOrderByCreatedAtDesc(id));
     }
 
@@ -141,7 +146,7 @@ public class ComputerController {
                 .map(ComputerVersion::getCreatedAt)
                 .max(Instant::compareTo)
                 .orElse(null);
-        return new ComputerListDto(c.getId(), c.getName(), versions.size(), latest);
+        return new ComputerListDto(c.getId(), c.getName(), c.getHostname(), versions.size(), latest);
     }
 
     private String requireName(String name) {
@@ -149,5 +154,9 @@ public class ComputerController {
             throw new BadRequestException("name is required");
         }
         return name.strip();
+    }
+
+    private String normalizeHostname(String hostname) {
+        return hostname == null || hostname.isBlank() ? null : hostname.strip();
     }
 }

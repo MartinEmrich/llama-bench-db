@@ -11,7 +11,7 @@ public record ExportDto(
         List<ResultExport> results
 ) {
 
-    public record ComputerExport(Long id, String name, List<VersionExport> versions) {
+    public record ComputerExport(Long id, String name, String hostname, List<VersionExport> versions) {
     }
 
     public record VersionExport(Long id, Long computerId, Instant createdAt, String description) {

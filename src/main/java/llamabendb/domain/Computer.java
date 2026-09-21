@@ -24,6 +24,11 @@ public class Computer {
     @Column(nullable = false, length = 128)
     private String name;
 
+    // Not unique: a hostname may be reused on a successor system. When several
+    // computers share one, the newest version timestamp wins on import.
+    @Column(length = 128)
+    private String hostname;
+
     @OneToMany(mappedBy = "computer", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ComputerVersion> versions = new ArrayList<>();
 
@@ -37,6 +42,14 @@ public class Computer {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getHostname() {
+        return hostname;
+    }
+
+    public void setHostname(String hostname) {
+        this.hostname = hostname;
     }
 
     public List<ComputerVersion> getVersions() {

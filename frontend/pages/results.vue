@@ -37,7 +37,7 @@ const pageData = ref<{ content: ResultRow[]; page: number; size: number; totalEl
 })
 
 const filters = ref({
-  computerId: '', modelId: '', quant: '',
+  computerId: '', model: '', quant: '',
   ppMin: '', ppMax: '', tgMin: '', tgMax: '',
   ppTpsMin: '', ppTpsMax: '', tgTpsMin: '', tgTpsMax: ''
 })
@@ -108,6 +108,26 @@ async function removeResult(r: ResultRow) {
   }
 }
 
+// One entry per base model (modelId), regardless of how many quants exist.
+const baseModels = computed(() => {
+  const seen = new Map<string, any>()
+  for (const m of models.value) if (!seen.has(m.modelId)) seen.set(m.modelId, m)
+  return [...seen.values()]
+})
+
+// Quants available for the selected base model; all quants when none is selected.
+const quantOptions = computed(() => {
+  const sel = filters.value.model
+  return [...new Set(models.value.filter((m: any) => !sel || m.modelId === sel).map((m: any) => m.quantization))]
+})
+
+// Drop a quant that does not exist for the newly selected base model.
+watch(() => filters.value.model, () => {
+  if (filters.value.quant !== '' && !quantOptions.value.includes(filters.value.quant)) {
+    filters.value.quant = ''
+  }
+})
+
 watch(filters, () => { page.value = 0; loadResults() }, { deep: true })
 
 function onImported() { loadResults(); loadModels() }
@@ -134,16 +154,16 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
         </div>
         <div class="filter">
           <label>Model</label>
-          <select v-model="filters.modelId">
+          <select v-model="filters.model">
             <option value="">all</option>
-            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }} ({{ m.quantization }})</option>
+            <option v-for="m in baseModels" :key="m.modelId" :value="m.modelId">{{ m.name }}</option>
           </select>
         </div>
         <div class="filter">
           <label>Quant</label>
           <select v-model="filters.quant">
             <option value="">all</option>
-            <option v-for="m in [...new Set(models.map((m: any) => m.quantization))]" :key="m" :value="m">{{ m }}</option>
+            <option v-for="q in quantOptions" :key="q" :value="q">{{ q }}</option>
           </select>
         </div>
         <div class="filter"><label>PP tok min</label><input type="number" v-model="filters.ppMin"></div>

@@ -43,7 +43,7 @@ public class ExportController {
     public ExportDto export() {
         List<ExportDto.ComputerExport> computers = computerRepo.findAll().stream()
                 .map(c -> new ExportDto.ComputerExport(
-                        c.getId(), c.getName(),
+                        c.getId(), c.getName(), c.getHostname(),
                         versionRepo.findByComputerIdOrderByCreatedAtDesc(c.getId()).stream()
                                 .map(v -> new ExportDto.VersionExport(v.getId(), c.getId(), v.getCreatedAt(), v.getDescription()))
                                 .toList()))
@@ -77,6 +77,7 @@ public class ExportController {
         for (ExportDto.ComputerExport c : in.computers()) {
             Computer comp = new Computer();
             comp.setName(c.name());
+            comp.setHostname(c.hostname());
             comp = computerRepo.save(comp);
             computersById.put(c.id(), comp);
         }

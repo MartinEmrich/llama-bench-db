@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,6 +39,36 @@ class ApiIntegrationTest {
             | m 4B Q4 | 2.5 GiB | CPU | tg128 | 0.6 ± 0.1 |
             """;
 
+    // Test methods share one in-memory DB, so every test uses its own computer
+    // and model names to stay independent of execution order.
+
+    private static String autoDetectPaste(String host, String hfArg) {
+        return """
+                martin@%1$s:~/upstream/llama.cpp$ build/bin/llama-bench %2$s -ctk q8_0
+                Downloading Auto-4B-Q4_K_M.gguf ───────────────────────────────── 100%%
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | auto 4B Q4_K - Medium | 2.5 GiB | CPU | pp512 | 0.7 ± 0.0 |
+                | auto 4B Q4_K - Medium | 2.5 GiB | CPU | tg128 | 0.6 ± 0.1 |
+                """.formatted(host, hfArg);
+    }
+
+    private static String twoRunsPaste(String host, String repo4b, String repo2b) {
+        return """
+                martin@%1$s:~$ build/bin/llama-bench -hf %2$s
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | auto 4B Q4_K - Medium | 2.5 GiB | CPU | pp512 | 0.7 ± 0.0 |
+                | auto 4B Q4_K - Medium | 2.5 GiB | CPU | tg128 | 0.6 ± 0.1 |
+
+                martin@%1$s:~$ build/bin/llama-bench -hf %3$s
+                | model | size | backend | test | t/s |
+                | ----- | ----: | ------- | ---: | --: |
+                | auto 2B Q4_K - Medium | 1.2 GiB | CPU | pp512 | 1.8 ± 0.0 |
+                | auto 2B Q4_K - Medium | 1.2 GiB | CPU | tg128 | 1.3 ± 0.0 |
+                """.formatted(host, repo4b, repo2b);
+    }
+
     private JsonNode postJson(String path, Object body) throws Exception {
         String response = mvc.perform(post(path)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -56,6 +87,14 @@ class ApiIntegrationTest {
 
     private long createComputer(String name) throws Exception {
         return postJson("/api/computers", Map.of("name", name, "description", "test machine")).get("id").asLong();
+    }
+
+    private long createComputer(String name, String hostname) throws Exception {
+        var body = new java.util.HashMap<String, Object>();
+        body.put("name", name);
+        body.put("hostname", hostname);
+        body.put("description", "test machine");
+        return postJson("/api/computers", body).get("id").asLong();
     }
 
     private long versionOf(long computerId) throws Exception {
@@ -86,6 +125,18 @@ class ApiIntegrationTest {
             body.put("build", build);
         }
         postJson("/api/results/import", body);
+    }
+
+    private JsonNode importAutodetect(String text) throws Exception {
+        return postJson("/api/results/import", Map.of("text", text));
+    }
+
+    private String importError(String body) throws Exception {
+        return mvc.perform(post("/api/results/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andReturn().getResponse().getContentAsString();
     }
 
     @Test
@@ -248,7 +299,7 @@ class ApiIntegrationTest {
 
     @Test
     void exportImportRoundTrip() throws Exception {
-        long computer = createComputer("roundtrip-box");
+        long computer = createComputer("roundtrip-box", "rt-host");
         long version = versionOf(computer);
         long model = createModel("acme/RT-4B-GGUF:Q4_K_M", null);
         importText(computer, version, model, MINIMAL_TABLE);
@@ -261,5 +312,159 @@ class ApiIntegrationTest {
         assertEquals(nResults, imported.get("results").asInt());
 
         assertEquals(nResults, getJson("/api/results?size=100").get("totalElements").asLong());
+
+        JsonNode computers = getJson("/api/computers");
+        JsonNode rt = null;
+        for (JsonNode c : computers) {
+            if ("rt-host".equals(c.get("hostname").asText())) {
+                rt = c;
+            }
+        }
+        assertTrue(rt != null, "computer with hostname rt-host missing after round trip");
+    }
+
+    @Test
+    void autodetectResolvesComputerAndCreatesModelSilently() throws Exception {
+        long computer = createComputer("auto-box", "auto-box");
+
+        JsonNode res = importAutodetect(autoDetectPaste("auto-box", "-hf acme/Auto-4B-GGUF:Q4_K_M"));
+        assertEquals(1, res.get("results").size());
+        assertEquals("auto-box", res.get("results").get(0).get("computerName").asText());
+        assertEquals("acme/Auto-4B-GGUF", res.get("results").get(0).get("modelId").asText());
+
+        assertEquals(1, getJson("/api/results?computerId=" + computer).get("totalElements").asLong());
+        JsonNode m = getJson("/api/models?q=Auto-4B").get(0);
+        assertEquals("Auto-4B", m.get("name").asText());
+        assertEquals("acme/Auto-4B-GGUF", m.get("modelId").asText());
+        assertEquals("Q4_K_M", m.get("quantization").asText());
+    }
+
+    @Test
+    void autodetectMultiModelPasteLinksEachRunToItsModel() throws Exception {
+        long computer = createComputer("twina-box", "twina-box");
+        long known = createModel("acme/TwinA-4B-GGUF:Q4_K_M", null);
+
+        JsonNode res = importAutodetect(twoRunsPaste("twina-box", "acme/TwinA-4B-GGUF:Q4_K_M", "acme/TwinA-2B-GGUF:Q4_K_M"));
+        assertEquals(2, res.get("results").size());
+        assertEquals(2, getJson("/api/results?computerId=" + computer).get("totalElements").asLong());
+
+        long unknown = getJson("/api/models?q=TwinA-2B").get(0).get("id").asLong();
+        assertEquals(1, getJson("/api/results?modelId=" + known).get("totalElements").asLong());
+        assertEquals(1, getJson("/api/results?modelId=" + unknown).get("totalElements").asLong());
+    }
+
+    @Test
+    void listFiltersByBaseModelAcrossQuants() throws Exception {
+        long computer = createComputer("filter-box");
+        long version = versionOf(computer);
+        long q4 = createModel("acme/Filter-4B-GGUF:Q4_K_M", null);
+        long q5 = createModel("acme/Filter-4B-GGUF:Q5_K_S", null);
+        long other = createModel("acme/Other-4B-GGUF:Q4_K_M", null);
+
+        importText(computer, version, q4, MINIMAL_TABLE);
+        importText(computer, version, q5, MINIMAL_TABLE);
+        importText(computer, version, other, MINIMAL_TABLE);
+
+        assertEquals(2, getJson("/api/results?model=acme/Filter-4B-GGUF").get("totalElements").asLong());
+        assertEquals(1, getJson("/api/results?model=acme/Other-4B-GGUF").get("totalElements").asLong());
+        assertEquals(0, getJson("/api/results?model=acme/Missing-4B-GGUF").get("totalElements").asLong());
+    }
+
+    @Test
+    void hostnameCollisionPicksNewestVersion() throws Exception {
+        createComputer("retired-box", "shared-host");
+        long current = createComputer("current-box", "shared-host");
+        postJson("/api/computers/" + current + "/versions", Map.of("description", "v2"));
+
+        importAutodetect(autoDetectPaste("shared-host", "-hf acme/Collide-4B-GGUF:Q4_K_M"));
+
+        assertEquals(1, getJson("/api/results?computerId=" + current).get("totalElements").asLong());
+    }
+
+    @Test
+    void autodetectUnknownHostnameIsBlocked() throws Exception {
+        createComputer("other-box", "other-host");
+
+        String error = importError(json.writeValueAsString(
+                Map.of("text", autoDetectPaste("unknown-host", "-hf acme/Auto-4B-GGUF:Q4_K_M"))));
+        assertTrue(json.readTree(error).get("error").asText().contains("no computer with hostname 'unknown-host'"));
+    }
+
+    @Test
+    void autodetectWithoutHfIsBlocked() throws Exception {
+        createComputer("nohf-box", "nohf-box");
+
+        String error = importError(json.writeValueAsString(
+                Map.of("text", autoDetectPaste("nohf-box", "--model /models/auto.gguf"))));
+        assertTrue(json.readTree(error).get("error").asText().contains("no -hf parameter"));
+    }
+
+    @Test
+    void autodetectWithoutCommandLineIsBlocked() throws Exception {
+        String error = importError(json.writeValueAsString(Map.of("text", MINIMAL_TABLE)));
+        assertTrue(json.readTree(error).get("error").asText().contains("no hostname detected"));
+    }
+
+    @Test
+    void autodetectHfWithoutQuantIsBlocked() throws Exception {
+        createComputer("noquant-box", "noquant-box");
+
+        String error = importError(json.writeValueAsString(
+                Map.of("text", autoDetectPaste("noquant-box", "-hf acme/Auto-4B-GGUF"))));
+        assertTrue(json.readTree(error).get("error").asText().contains("no quantization"));
+    }
+
+    @Test
+    void explicitModelMultiModelPasteStillRejected() throws Exception {
+        long computer = createComputer("twinb-box", "twinb-box");
+        long version = versionOf(computer);
+        long model = createModel("acme/TwinB-4B-GGUF:Q4_K_M", null);
+
+        String error = importError(json.writeValueAsString(Map.of(
+                "computerId", computer, "versionId", version, "modelId", model,
+                "text", twoRunsPaste("twinb-box", "acme/TwinB-4B-GGUF:Q4_K_M", "acme/TwinB-2B-GGUF:Q4_K_M"))));
+        assertTrue(json.readTree(error).get("error").asText().contains("multiple models"));
+    }
+
+    @Test
+    void detectEndpointReturnsPerRunAttribution() throws Exception {
+        String response = mvc.perform(post("/api/results/detect")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of(
+                                "text", twoRunsPaste("detect-box", "acme/Detect-4B-GGUF:Q4_K_M", "acme/Detect-2B-GGUF:Q4_K_M")))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        JsonNode body = json.readTree(response);
+        assertTrue(body.get("parseError").isNull());
+        assertEquals(2, body.get("runs").size());
+        assertEquals("detect-box", body.get("runs").get(0).get("hostname").asText());
+        assertEquals("acme/Detect-4B-GGUF:Q4_K_M", body.get("runs").get(0).get("hfModelId").asText());
+        assertEquals("acme/Detect-2B-GGUF:Q4_K_M", body.get("runs").get(1).get("hfModelId").asText());
+
+        String garbage = mvc.perform(post("/api/results/detect")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("text", "no tables here"))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertTrue(json.readTree(garbage).get("parseError").asText().contains("no result data"));
+    }
+
+    @Test
+    void computerHostnameCanBeCreatedAndUpdated() throws Exception {
+        long id = createComputer("box", "box-host");
+        assertEquals("box-host", getJson("/api/computers/" + id).get("hostname").asText());
+
+        mvc.perform(put("/api/computers/" + id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("name", "box", "hostname", "renamed-host"))))
+                .andExpect(status().isOk());
+        assertEquals("renamed-host", getJson("/api/computers/" + id).get("hostname").asText());
+
+        // blank clears the hostname
+        mvc.perform(put("/api/computers/" + id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("name", "box", "hostname", ""))))
+                .andExpect(status().isOk());
+        assertTrue(getJson("/api/computers/" + id).get("hostname").isNull());
     }
 }

@@ -6,10 +6,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ModelRepository extends JpaRepository<Model, Long> {
 
     boolean existsByModelIdAndQuantization(String modelId, String quantization);
+
+    // Quant spelling is case-insensitive per llama-bench; look it up that way
+    // so autodetect does not create a duplicate of an existing model.
+    Optional<Model> findByModelIdAndQuantizationIgnoreCase(String modelId, String quantization);
 
     @Query("""
             select m from Model m

@@ -28,7 +28,9 @@ public final class ImportParser {
             double tgTps,
             double ppDeviation,
             double tgDeviation,
-            String build
+            String build,
+            String hostname,
+            String hfModelId
     ) {
     }
 
@@ -38,15 +40,26 @@ public final class ImportParser {
     private record Table(int line, int lastRowIdx, List<Map<String, String>> rows) {
     }
 
+    /** Hostname and -hf model id taken from the command line preceding a table. */
+    public record CommandLineInfo(String hostname, String hfModelId) {
+    }
+
+    private record CommandLine(int idx, String hostname, String hfModelId) {
+    }
+
     private static final Pattern TPS = Pattern.compile("^\\s*([0-9]+(?:\\.[0-9]+)?)\\s*±\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
     private static final Pattern PP_TEST = Pattern.compile("^pp(\\d+)$");
     private static final Pattern TG_TEST = Pattern.compile("^tg(\\d+)$");
     private static final Pattern SIZE = Pattern.compile("^\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(GiB|MiB)\\s*$");
     private static final Pattern BUILD_LINE = Pattern.compile("^\\s*build:\\s*(\\S.*?)\\s*$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ANSI_ESCAPE = Pattern.compile("\u001b\\[[0-9;]*[A-Za-z]");
+    private static final Pattern HOSTNAME = Pattern.compile("@([A-Za-z0-9][A-Za-z0-9._-]*)");
+    private static final List<String> HF_FLAGS = List.of("-hf", "-hfr", "--hf-repo");
 
     public ParseResult parse(String text) {
         String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n");
         List<Table> tables = extractTables(lines);
+        List<CommandLine> commands = findCommandLines(lines);
         List<Dataset> datasets = new ArrayList<>();
         int emptySkipped = 0;
         for (int s = 0; s < tables.size(); s++) {
@@ -55,21 +68,86 @@ public final class ImportParser {
                 emptySkipped++;
                 continue;
             }
-            datasets.addAll(toDatasets(table, findBuild(lines, tables, s)));
+            datasets.addAll(toDatasets(table, findBuild(lines, tables, s), attributedCommand(commands, table)));
         }
         if (datasets.isEmpty()) {
             throw new ImportException("no result data found in the pasted text");
         }
+        // A multi-model paste is only rejected when a single model was selected explicitly;
+        // in autodetect mode each run is linked to the model of its own command line.
         List<String> models = datasets.stream()
                 .map(Dataset::modelString)
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        if (models.size() > 1) {
-            throw new ImportException("paste contains results for multiple models ("
-                    + String.join("; ", models) + ") - please paste one model at a time");
-        }
         return new ParseResult(datasets, models, emptySkipped);
+    }
+
+    /**
+     * Shell command lines (prompt + llama-bench invocation) found in the text, in order.
+     * A command line is any non-table line mentioning "llama-bench"; ANSI escapes are
+     * stripped first. The hostname comes from the prompt part, the model id from the
+     * -hf/-hfr/--hf-repo parameter (null when absent).
+     */
+    public List<CommandLineInfo> detectCommandLines(String text) {
+        String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n");
+        return findCommandLines(lines).stream()
+                .map(c -> new CommandLineInfo(c.hostname(), c.hfModelId()))
+                .toList();
+    }
+
+    private List<CommandLine> findCommandLines(String[] lines) {
+        List<CommandLine> out = new ArrayList<>();
+        for (int i = 0; i < lines.length; i++) {
+            String line = ANSI_ESCAPE.matcher(lines[i]).replaceAll("");
+            if (line.isBlank() || line.stripLeading().startsWith("|")) {
+                continue;
+            }
+            int cmdIdx = line.lastIndexOf("llama-bench");
+            if (cmdIdx < 0) {
+                continue;
+            }
+            out.add(new CommandLine(i, promptHostname(line.substring(0, cmdIdx)), hfModelId(line)));
+        }
+        return out;
+    }
+
+    /** The last command line before the table header is attributed to that table. */
+    private CommandLineInfo attributedCommand(List<CommandLine> commands, Table table) {
+        int headerIdx = table.line() - 1;
+        CommandLineInfo info = null;
+        for (CommandLine c : commands) {
+            if (c.idx() >= headerIdx) {
+                break;
+            }
+            info = new CommandLineInfo(c.hostname(), c.hfModelId());
+        }
+        return info;
+    }
+
+    private String promptHostname(String prompt) {
+        Matcher m = HOSTNAME.matcher(prompt);
+        String host = null;
+        while (m.find()) {
+            host = m.group(1);
+        }
+        return host;
+    }
+
+    private String hfModelId(String line) {
+        String[] tokens = line.split("\\s+");
+        for (int i = 0; i < tokens.length; i++) {
+            String t = tokens[i];
+            for (String flag : HF_FLAGS) {
+                if (t.equals(flag)) {
+                    return i + 1 < tokens.length ? tokens[i + 1] : null;
+                }
+                if (t.startsWith(flag + "=")) {
+                    return t.substring(flag.length() + 1);
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -161,7 +239,7 @@ public final class ImportParser {
         return Arrays.stream(s.split("\\|", -1)).map(String::strip).toList();
     }
 
-    private List<Dataset> toDatasets(Table table, String build) {
+    private List<Dataset> toDatasets(Table table, String build, CommandLineInfo command) {
         boolean hasTestColumn = table.rows().get(0).containsKey("test");
         if (!hasTestColumn) {
             throw new ImportException("table at line " + table.line() + " has no 'test' column");
@@ -220,7 +298,9 @@ public final class ImportParser {
                     fields,
                     ppTokens, tgTokens,
                     pp[0], tg[0], pp[1], tg[1],
-                    build));
+                    build,
+                    command != null ? command.hostname() : null,
+                    command != null ? command.hfModelId() : null));
         }
         return datasets;
     }

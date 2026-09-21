@@ -32,6 +32,9 @@ public class ResultController {
                                 String build, Boolean acknowledgeWarnings) {
     }
 
+    public record DetectRequest(String text) {
+    }
+
     private static final Map<String, String> SORTABLE = Map.ofEntries(
             Map.entry("importedAt", "importedAt"),
             Map.entry("computer", "computerVersion.computer.name"),
@@ -58,6 +61,7 @@ public class ResultController {
             @RequestParam(required = false) Long computerId,
             @RequestParam(required = false) Long versionId,
             @RequestParam(required = false) Long modelId,
+            @RequestParam(required = false) String model,
             @RequestParam(required = false) String quant,
             @RequestParam(required = false) Integer ppMin,
             @RequestParam(required = false) Integer ppMax,
@@ -82,7 +86,7 @@ public class ResultController {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 200), Sort.by(direction, property));
 
         Page<ResultDto> result = resultRepo.search(
-                computerId, versionId, modelId, quant,
+                computerId, versionId, modelId, model, quant,
                 ppMin, ppMax, tgMin, tgMax,
                 ppTpsMin, ppTpsMax, tgTpsMin, tgTpsMax,
                 pageable);
@@ -92,9 +96,11 @@ public class ResultController {
 
     @PostMapping("/import")
     public ResponseEntity<ImportResponse> importRun(@RequestBody ImportRequest req) {
-        if (req.computerId() == null || req.modelId() == null || req.text() == null) {
-            throw new BadRequestException("computerId, modelId and text are required");
+        if (req.text() == null) {
+            throw new BadRequestException("text is required");
         }
+        // computerId and modelId may be null: each run is then resolved from the
+        // command line preceding its table (hostname → computer, -hf → model).
         ImportResponse response = importService.importRun(
                 req.computerId(), req.versionId(), req.modelId(), req.text(), req.build(),
                 Boolean.TRUE.equals(req.acknowledgeWarnings()));
@@ -102,6 +108,15 @@ public class ResultController {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /** What autodetect would resolve per run, so the import form can preview it. */
+    @PostMapping("/detect")
+    public ImportService.DetectResult detect(@RequestBody DetectRequest req) {
+        if (req.text() == null) {
+            throw new BadRequestException("text is required");
+        }
+        return importService.detect(req.text());
     }
 
     @DeleteMapping("/{id}")

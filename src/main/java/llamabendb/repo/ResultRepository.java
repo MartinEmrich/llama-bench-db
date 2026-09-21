@@ -33,6 +33,7 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
             where (:computerId is null or comp.id = :computerId)
               and (:versionId is null or cv.id = :versionId)
               and (:modelId is null or m.id = :modelId)
+              and (:model is null or m.modelId = :model)
               and (:quant is null or m.quantization = :quant)
               and (:ppMin is null or r.ppTokens >= :ppMin)
               and (:ppMax is null or r.ppTokens <= :ppMax)
@@ -47,6 +48,7 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
             @Param("computerId") Long computerId,
             @Param("versionId") Long versionId,
             @Param("modelId") Long modelId,
+            @Param("model") String model,
             @Param("quant") String quant,
             @Param("ppMin") Integer ppMin,
             @Param("ppMax") Integer ppMax,

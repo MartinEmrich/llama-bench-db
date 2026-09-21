@@ -3,11 +3,15 @@ package llamabendb.service;
 import llamabendb.api.BadRequestException;
 import llamabendb.api.NotFoundException;
 import llamabendb.api.dto.ImportResponse;
+import llamabendb.domain.Computer;
 import llamabendb.domain.ComputerVersion;
+import llamabendb.domain.HfModelId;
 import llamabendb.domain.Model;
+import llamabendb.domain.QuantSortKey;
 import llamabendb.domain.Result;
 import llamabendb.importer.ImportException;
 import llamabendb.importer.ImportParser;
+import llamabendb.repo.ComputerRepository;
 import llamabendb.repo.ComputerVersionRepository;
 import llamabendb.repo.ModelRepository;
 import llamabendb.repo.ResultRepository;
@@ -17,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,42 +36,55 @@ public class ImportService {
     private static final double SIZE_TOLERANCE = 0.10;
 
     private final ImportParser parser = new ImportParser();
+    private final ComputerRepository computerRepo;
     private final ComputerVersionRepository versionRepo;
     private final ModelRepository modelRepo;
     private final ResultRepository resultRepo;
 
-    public ImportService(ComputerVersionRepository versionRepo, ModelRepository modelRepo, ResultRepository resultRepo) {
+    public ImportService(ComputerRepository computerRepo, ComputerVersionRepository versionRepo,
+                         ModelRepository modelRepo, ResultRepository resultRepo) {
+        this.computerRepo = computerRepo;
         this.versionRepo = versionRepo;
         this.modelRepo = modelRepo;
         this.resultRepo = resultRepo;
     }
 
+    /**
+     * Imports a pasted console transcript. computerId and modelId may be null:
+     * each run is then resolved from the command line preceding its table
+     * (hostname → computer, -hf → model). Unknown models are created silently.
+     */
     @Transactional
     public ImportResponse importRun(Long computerId, Long computerVersionId, Long modelId, String text,
                                     String build, boolean acknowledgeWarnings) {
-        ComputerVersion version;
-        if (computerVersionId == null) {
-            // No explicit version: attach to the newest one of the computer.
-            List<ComputerVersion> versions = versionRepo.findByComputerIdOrderByCreatedAtDesc(computerId);
-            if (versions.isEmpty()) {
-                throw new BadRequestException("computer " + computerId + " has no versions");
-            }
-            version = versions.get(0);
-        } else {
-            version = versionRepo.findById(computerVersionId)
-                    .orElseThrow(() -> new NotFoundException("computer version " + computerVersionId + " not found"));
-            if (!version.getComputer().getId().equals(computerId)) {
-                throw new BadRequestException("version " + computerVersionId + " does not belong to computer " + computerId);
+        ImportParser.ParseResult parsed = parser.parse(text);
+
+        Model explicitModel = null;
+        if (modelId != null) {
+            explicitModel = modelRepo.findById(modelId)
+                    .orElseThrow(() -> new NotFoundException("model " + modelId + " not found"));
+            if (parsed.modelStrings().size() > 1) {
+                throw new ImportException("paste contains results for multiple models ("
+                        + String.join("; ", parsed.modelStrings())
+                        + ") - select a single model or use autodetect");
             }
         }
-        Model model = modelRepo.findById(modelId)
-                .orElseThrow(() -> new NotFoundException("model " + modelId + " not found"));
+        ComputerVersion explicitVersion = computerId != null ? resolveVersion(computerId, computerVersionId) : null;
 
-        ImportParser.ParseResult parsed = parser.parse(text);
+        Map<String, Model> modelCache = new HashMap<>();
+        Map<String, ComputerVersion> versionCache = new HashMap<>();
+        List<Resolved> resolved = new ArrayList<>();
+        for (ImportParser.Dataset d : parsed.datasets()) {
+            resolved.add(new Resolved(
+                    explicitVersion != null ? explicitVersion : resolveVersionByHostname(d.hostname(), versionCache),
+                    resolveModel(d.hfModelId(), explicitModel, modelCache)));
+        }
 
         List<ImportResponse.Warning> warnings = new ArrayList<>();
         boolean sizeMismatch = false;
-        for (ImportParser.Dataset d : parsed.datasets()) {
+        for (int i = 0; i < parsed.datasets().size(); i++) {
+            ImportParser.Dataset d = parsed.datasets().get(i);
+            Model model = resolved.get(i).model();
             if (d.sizeGiB() == null) {
                 continue;
             }
@@ -85,18 +103,102 @@ public class ImportService {
 
         String fallbackBuild = build == null || build.isBlank() ? null : build.strip();
         List<Result> results = new ArrayList<>();
-        for (ImportParser.Dataset d : parsed.datasets()) {
-            Result r = toEntity(d, version, model, fallbackBuild);
+        for (int i = 0; i < parsed.datasets().size(); i++) {
+            ImportParser.Dataset d = parsed.datasets().get(i);
+            Result r = toEntity(d, resolved.get(i).version(), resolved.get(i).model(), fallbackBuild);
             addDeviceWarning(r, warnings);
             results.add(r);
         }
         resultRepo.saveAll(results);
 
-        List<ImportResponse.ImportedResult> created = results.stream()
-                .map(r -> new ImportResponse.ImportedResult(
-                        r.getId(), r.getModelString(), r.getPpTokens(), r.getTgTokens(), r.getPpTps(), r.getTgTps()))
-                .toList();
+        List<ImportResponse.ImportedResult> created = new ArrayList<>();
+        for (int i = 0; i < results.size(); i++) {
+            Result r = results.get(i);
+            created.add(new ImportResponse.ImportedResult(
+                    r.getId(), r.getModelString(), r.getPpTokens(), r.getTgTokens(), r.getPpTps(), r.getTgTps(),
+                    r.getComputerVersion().getComputer().getName(), r.getModel().getModelId()));
+        }
         return new ImportResponse(created, warnings, false);
+    }
+
+    /** Preview of what autodetect would resolve per run; parseError set when the text does not parse. */
+    public DetectResult detect(String text) {
+        try {
+            List<DetectRun> runs = parser.parse(text).datasets().stream()
+                    .map(d -> new DetectRun(d.hostname(), d.hfModelId()))
+                    .toList();
+            return new DetectResult(null, runs);
+        } catch (ImportException e) {
+            return new DetectResult(e.getMessage(), List.of());
+        }
+    }
+
+    public record DetectRun(String hostname, String hfModelId) {
+    }
+
+    public record DetectResult(String parseError, List<DetectRun> runs) {
+    }
+
+    private record Resolved(ComputerVersion version, Model model) {
+    }
+
+    private ComputerVersion resolveVersion(Long computerId, Long computerVersionId) {
+        if (computerVersionId == null) {
+            // No explicit version: attach to the newest one of the computer.
+            List<ComputerVersion> versions = versionRepo.findByComputerIdOrderByCreatedAtDesc(computerId);
+            if (versions.isEmpty()) {
+                throw new BadRequestException("computer " + computerId + " has no versions");
+            }
+            return versions.get(0);
+        }
+        ComputerVersion version = versionRepo.findById(computerVersionId)
+                .orElseThrow(() -> new NotFoundException("computer version " + computerVersionId + " not found"));
+        if (!version.getComputer().getId().equals(computerId)) {
+            throw new BadRequestException("version " + computerVersionId + " does not belong to computer " + computerId);
+        }
+        return version;
+    }
+
+    private ComputerVersion resolveVersionByHostname(String hostname, Map<String, ComputerVersion> cache) {
+        if (hostname == null || hostname.isBlank()) {
+            throw new ImportException("no computer selected and no hostname detected in the pasted command line");
+        }
+        return cache.computeIfAbsent(hostname.toLowerCase(), h -> {
+            List<Computer> candidates = computerRepo.findByHostnameNewestVersionFirst(hostname);
+            if (candidates.isEmpty()) {
+                throw new ImportException("no computer with hostname '" + hostname + "' - add it or select a computer");
+            }
+            return resolveVersion(candidates.get(0).getId(), null);
+        });
+    }
+
+    private Model resolveModel(String hfModelId, Model explicitModel, Map<String, Model> cache) {
+        if (explicitModel != null) {
+            return explicitModel;
+        }
+        if (hfModelId == null || hfModelId.isBlank()) {
+            throw new ImportException("no model selected and no -hf parameter found in the pasted command line");
+        }
+        return cache.computeIfAbsent(hfModelId.strip().toLowerCase(), k -> {
+            HfModelId.Parsed parsed;
+            try {
+                parsed = HfModelId.parse(hfModelId, null);
+            } catch (IllegalArgumentException e) {
+                throw new ImportException("cannot auto-detect model: -hf '" + hfModelId
+                        + "' has no quantization - expected 'uploader/model:QUANT'");
+            }
+            return modelRepo.findByModelIdAndQuantizationIgnoreCase(parsed.repo(), parsed.quant())
+                    .orElseGet(() -> createModel(parsed));
+        });
+    }
+
+    private Model createModel(HfModelId.Parsed parsed) {
+        Model m = new Model();
+        m.setName(parsed.baseName());
+        m.setModelId(parsed.repo());
+        m.setQuantization(parsed.quant());
+        m.setQuantSortKey(QuantSortKey.of(parsed.quant()));
+        return modelRepo.save(m);
     }
 
     private void addDeviceWarning(Result r, List<ImportResponse.Warning> warnings) {
