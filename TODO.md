@@ -1,6 +1,6 @@
 # TODO — llama-bench-db implementation plan
 
-See `PLAN.md` for requirements. This file tracks open work; completed phases (0–7, plus the import autodetection feature) have been weeded out.
+This file tracks open work only; completed tasks should be weeded out.
 
 ## Locked decisions
 
@@ -12,6 +12,7 @@ See `PLAN.md` for requirements. This file tracks open work; completed phases (0�
 ## Open items
 
 - [ ] MariaDB smoke test — scrapped for now (if revisited: same pattern as the PostgreSQL one, the module is `org.flywaydb:flyway-mysql`)
+- [ ] Treat `ngl >= 99` as `-1` (all layers) in queries/evaluation — store the raw value as-is, but when filtering/sorting/comparing results treat any ngl of 99 or above the same as -1
 
 ## Phase 8 — Later: parameter normalization (planned, not started)
 
