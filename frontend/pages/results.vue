@@ -186,7 +186,7 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
             <th>Backend</th>
             <th>Devices</th>
             <th class="num sortable" @click="onSort('ngl')">ngl{{ sortIndicator('ngl') }}</th>
-            <th class="num">fa</th>
+            <th>KV Cache</th>
             <th>Params</th>
             <th v-if="showBuildColumn">Build</th>
             <th class="num sortable" @click="onSort('ppTokens')">PP tok{{ sortIndicator('ppTokens') }}</th>
@@ -205,7 +205,7 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
             <td>{{ r.backend ?? '' }}</td>
             <td>{{ r.devices ?? '' }}</td>
             <td class="num">{{ r.ngl }}</td>
-            <td class="num">{{ r.fa ? 1 : 0 }}</td>
+            <td>{{ r.typeK }}/{{ r.typeV }}<span v-if="!r.fa" class="muted" style="font-size:12px"> (No FA)</span></td>
             <td class="params-cell">
               <span v-for="[k, v] in sortedParams(r)" :key="k" class="param" :title="`${k}=${v}`">{{ k }}=<span class="param-val">{{ v }}</span></span>
             </td>
