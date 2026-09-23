@@ -13,6 +13,7 @@ This file tracks open work only; completed tasks should be weeded out.
 
 - [ ] MariaDB smoke test — scrapped for now (if revisited: same pattern as the PostgreSQL one, the module is `org.flywaydb:flyway-mysql`)
 - [ ] Treat `ngl >= 99` as `-1` (all layers) in queries/evaluation — store the raw value as-is, but when filtering/sorting/comparing results treat any ngl of 99 or above the same as -1
+- [ ] Intelligently handle compute backends. We need to detect and store not only the available backends the llama.cpp run binary supports (backend column), but also determine what was actually used for the run. We need to distinguish between backend frameworks (CPU, Vulkan, CUDA, ROCm, OpenVINO, SYCL) and devices (CPU, GPU, NPU), possibly mixed (multiple GPUs, GPU/CPU/NPU combinations, mixed backends (e.g. GPU0 on CUDA, GPU1 on Vulkan) etc. each run shall identify which compute/backend combinations were involved, in what split mode (layer, row, tensor, MoE offload).
 
 ## Phase 8 — Later: parameter normalization (planned, not started)
 
