@@ -6,8 +6,11 @@ import java.util.Map;
 public record ResultDto(
         Long id,
         Instant importedAt,
+        Long computerId,
+        Long versionId,
         String computerName,
         Instant versionDate,
+        Long modelRef,
         String modelName,
         String modelId,
         String quantization,

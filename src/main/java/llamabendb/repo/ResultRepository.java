@@ -20,8 +20,9 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
     @Query("""
             select new llamabendb.api.dto.ResultDto(
                 r.id, r.importedAt,
+                comp.id, cv.id,
                 comp.name, cv.createdAt,
-                m.name, m.modelId, m.quantization,
+                m.id, m.name, m.modelId, m.quantization,
                 r.modelString, r.sizeGiBObserved, r.backend, r.devices,
                 r.ngl, r.typeK, r.typeV, r.fa, r.threads, r.ts, r.loadMode,
                 r.ppTokens, r.tgTokens, r.ppTps, r.tgTps, r.ppDeviation, r.tgDeviation,
@@ -35,6 +36,8 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
               and (:modelId is null or m.id = :modelId)
               and (:model is null or m.modelId = :model)
               and (:quant is null or m.quantization = :quant)
+              and (:devices is null or r.devices = :devices)
+              and (:devicesEmpty is null or :devicesEmpty = false or r.devices is null)
               and (:ppMin is null or r.ppTokens >= :ppMin)
               and (:ppMax is null or r.ppTokens <= :ppMax)
               and (:tgMin is null or r.tgTokens >= :tgMin)
@@ -50,6 +53,8 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
             @Param("modelId") Long modelId,
             @Param("model") String model,
             @Param("quant") String quant,
+            @Param("devices") String devices,
+            @Param("devicesEmpty") Boolean devicesEmpty,
             @Param("ppMin") Integer ppMin,
             @Param("ppMax") Integer ppMax,
             @Param("tgMin") Integer tgMin,
@@ -70,4 +75,14 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
             order by r.importedAt desc, r.id desc
             """)
     List<String> findLatestBuilds(@Param("computerId") Long computerId, @Param("backend") String backend, Pageable pageable);
+
+    @Query("""
+            select distinct r.devices from Result r
+            join r.computerVersion cv
+            join cv.computer comp
+            where r.devices is not null
+              and (:computerId is null or comp.id = :computerId)
+            order by r.devices
+            """)
+    List<String> findDeviceValues(@Param("computerId") Long computerId);
 }

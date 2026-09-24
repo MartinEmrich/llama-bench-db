@@ -85,6 +85,40 @@ class ImportParserTest {
     }
 
     @Test
+    void deviceDumpsAreExtractedPerTable() throws IOException {
+        ImportParser.ParseResult r = parser.parse(sample("test-noise-and-unknown-columns.txt"));
+        for (ImportParser.Dataset d : r.datasets()) {
+            assertEquals(2, d.deviceDumps().size());
+            assertEquals("Vulkan", d.deviceDumps().get(0).framework());
+            assertEquals(0, d.deviceDumps().get(0).index());
+            assertTrue(d.deviceDumps().get(0).name().startsWith("AMD Radeon RX 7900 XTX"));
+            assertEquals(1, d.deviceDumps().get(1).index());
+            assertTrue(d.deviceDumps().get(1).name().startsWith("AMD Radeon RX 7800 XT"));
+            assertNull(d.openvinoType());
+        }
+    }
+
+    @Test
+    void openvinoDumpAndUsingDeviceLineAreCaptured() {
+        String text = """
+                a@box:~$ llama-bench -hf test/M-GGUF:Q4_K_M
+                ggml_openvino: Found 1 OpenVINO devices:
+                ggml_openvino: 0 = Intel(R) Arc(TM) A770 Graphics | subdevice: 0
+                OpenVINO: using device NPU
+                | model | size | backend | dev | test | t/s |
+                | ----- | ----: | ------- | ---: | ---: | --: |
+                | m 4B Q4 | 2.5 GiB | OpenVINO | OPENVINO0 | pp512 | 0.7 ± 0.0 |
+                | m 4B Q4 | 2.5 GiB | OpenVINO | OPENVINO0 | tg128 | 0.6 ± 0.1 |
+                """;
+        ImportParser.Dataset d = parser.parse(text).datasets().get(0);
+        assertEquals(1, d.deviceDumps().size());
+        assertEquals("OpenVINO", d.deviceDumps().get(0).framework());
+        assertEquals(0, d.deviceDumps().get(0).index());
+        assertEquals("Intel(R) Arc(TM) A770 Graphics", d.deviceDumps().get(0).name());
+        assertEquals("NPU", d.openvinoType());
+    }
+
+    @Test
     void multiModelRejectionFileParsesWithPerRunHfIds() throws IOException {
         ImportParser.ParseResult r = parser.parse(sample("test-multi-model-rejection.txt"));
         assertEquals(3, r.datasets().size());

@@ -45,7 +45,8 @@ public class ExportController {
                 .map(c -> new ExportDto.ComputerExport(
                         c.getId(), c.getName(), c.getHostname(),
                         versionRepo.findByComputerIdOrderByCreatedAtDesc(c.getId()).stream()
-                                .map(v -> new ExportDto.VersionExport(v.getId(), c.getId(), v.getCreatedAt(), v.getDescription()))
+                                .map(v -> new ExportDto.VersionExport(v.getId(), c.getId(), v.getCreatedAt(),
+                                        v.getDescription(), v.getDevices() == null ? Map.of() : v.getDevices()))
                                 .toList()))
                 .toList();
         List<ExportDto.ModelExport> models = modelRepo.findAll().stream()
@@ -92,6 +93,7 @@ public class ExportController {
                 cv.setComputer(computer);
                 cv.setCreatedAt(v.createdAt());
                 cv.setDescription(v.description());
+                cv.setDevices(v.devices() != null ? new HashMap<>(v.devices()) : new HashMap<>());
                 cv = versionRepo.save(cv);
                 versionsById.put(v.id(), cv);
             }

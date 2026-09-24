@@ -4,8 +4,11 @@ import { ref, watch, computed } from 'vue'
 interface ResultRow {
   id: number
   importedAt: string
+  computerId: number
+  versionId: number
   computerName: string
   versionDate: string
+  modelRef: number
   modelName: string
   modelId: string
   quantization: string
@@ -36,8 +39,11 @@ const pageData = ref<{ content: ResultRow[]; page: number; size: number; totalEl
   content: [], page: 0, size: 25, totalElements: 0, totalPages: 0
 })
 
+// Sentinel filter value for "devices is null" (runs whose devices are unknown).
+const EMPTY = '__empty__'
+
 const filters = ref({
-  computerId: '', model: '', quant: '',
+  computerId: '', model: '', quant: '', device: '',
   ppMin: '', ppMax: '', tgMin: '', tgMax: '',
   ppTpsMin: '', ppTpsMax: '', tgTpsMin: '', tgTpsMax: ''
 })
@@ -47,9 +53,24 @@ const page = ref(0)
 async function loadComputers() { computers.value = await $fetch('/api/computers') }
 async function loadModels() { models.value = await $fetch('/api/models') }
 
+const deviceValues = ref<string[]>([])
+async function loadDeviceValues() {
+  const q: Record<string, any> = {}
+  if (filters.value.computerId !== '') q.computerId = filters.value.computerId
+  deviceValues.value = await $fetch('/api/results/device-values', { query: q })
+}
+
 async function loadResults() {
   const q: Record<string, any> = { sort: sort.value, page: page.value, size: 25 }
-  for (const [k, v] of Object.entries(filters.value)) if (v !== '') q[k] = v
+  for (const [k, v] of Object.entries(filters.value)) {
+    if (v === '') continue
+    if (k === 'device') {
+      if (v === EMPTY) q.devicesEmpty = true
+      else q.devices = v
+      continue
+    }
+    q[k] = v
+  }
   pageData.value = await $fetch('/api/results', { query: q })
 }
 
@@ -108,6 +129,91 @@ async function removeResult(r: ResultRow) {
   }
 }
 
+// Edit dialog. The form always sends every field: null = unchanged, empty
+// string = cleared (backend convention), so prefilled values round-trip as-is.
+const editing = ref<ResultRow | null>(null)
+const editBusy = ref(false)
+const editError = ref('')
+const form = ref<Record<string, any>>({})
+const versions = ref<any[]>([])
+const paramRows = ref<{ key: string; value: string }[]>([])
+
+async function loadVersions(computerId: number) {
+  const detail = await $fetch(`/api/computers/${computerId}`)
+  versions.value = detail.versions ?? []
+}
+
+function openEdit(r: ResultRow) {
+  editing.value = r
+  editError.value = ''
+  form.value = {
+    computerId: r.computerId, versionId: r.versionId, modelRef: r.modelRef,
+    importedAt: r.importedAt,
+    modelString: r.modelString ?? '', sizeGiB: r.sizeGiB ?? '',
+    backend: r.backend ?? '', devices: r.devices ?? '',
+    ngl: r.ngl, typeK: r.typeK, typeV: r.typeV, fa: r.fa,
+    threads: r.threads ?? '', ts: r.ts ?? '', loadMode: r.loadMode, build: r.build ?? ''
+  }
+  paramRows.value = Object.entries(r.params ?? {}).map(([key, value]) => ({ key, value: String(value) }))
+  loadVersions(r.computerId)
+}
+
+// Switching the computer invalidates the selected version; default to the newest.
+async function onEditComputerChange() {
+  form.value.versionId = null
+  await loadVersions(form.value.computerId)
+  if (form.value.versionId === null && versions.value.length > 0) {
+    form.value.versionId = versions.value[0].id
+  }
+}
+
+function addParamRow() { paramRows.value.push({ key: '', value: '' }) }
+function removeParamRow(i: number) { paramRows.value.splice(i, 1) }
+
+function paramsFromRows(): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const r of paramRows.value) {
+    const k = r.key.trim()
+    if (k) out[k] = r.value
+  }
+  return out
+}
+
+async function saveEdit() {
+  editBusy.value = true
+  editError.value = ''
+  try {
+    await $fetch(`/api/results/${editing.value.id}`, {
+      method: 'PUT',
+      body: {
+        computerId: form.value.computerId,
+        versionId: form.value.versionId,
+        modelId: form.value.modelRef,
+        importedAt: form.value.importedAt || null,
+        modelString: form.value.modelString,
+        sizeGiBObserved: form.value.sizeGiB,
+        backend: form.value.backend,
+        devices: form.value.devices,
+        ngl: form.value.ngl === null || form.value.ngl === undefined ? '' : String(form.value.ngl),
+        typeK: form.value.typeK,
+        typeV: form.value.typeV,
+        fa: form.value.fa,
+        threads: form.value.threads,
+        ts: form.value.ts,
+        loadMode: form.value.loadMode,
+        build: form.value.build,
+        params: paramsFromRows()
+      }
+    })
+    editing.value = null
+    await Promise.all([loadResults(), loadDeviceValues()])
+  } catch (e: any) {
+    editError.value = e.data?.error ?? e.message
+  } finally {
+    editBusy.value = false
+  }
+}
+
 // One entry per base model (modelId), regardless of how many quants exist.
 const baseModels = computed(() => {
   const seen = new Map<string, any>()
@@ -130,9 +236,18 @@ watch(() => filters.value.model, () => {
 
 watch(filters, () => { page.value = 0; loadResults() }, { deep: true })
 
-function onImported() { loadResults(); loadModels() }
+// The devices dropdown is scoped to the selected computer.
+watch(() => filters.value.computerId, async () => {
+  await loadDeviceValues()
+  if (filters.value.device !== '' && filters.value.device !== EMPTY
+      && !deviceValues.value.includes(filters.value.device)) {
+    filters.value.device = ''
+  }
+})
 
-await Promise.all([loadComputers(), loadModels(), loadResults()])
+function onImported() { loadResults(); loadModels(); loadDeviceValues() }
+
+await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResults()])
 </script>
 
 <template>
@@ -164,6 +279,14 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
           <select v-model="filters.quant">
             <option value="">all</option>
             <option v-for="q in quantOptions" :key="q" :value="q">{{ q }}</option>
+          </select>
+        </div>
+        <div class="filter">
+          <label>Devices</label>
+          <select v-model="filters.device">
+            <option value="">all</option>
+            <option v-for="c in deviceValues" :key="c" :value="c">{{ c }}</option>
+            <option :value="EMPTY">(empty)</option>
           </select>
         </div>
         <div class="filter"><label>PP tok min</label><input type="number" v-model="filters.ppMin"></div>
@@ -214,7 +337,12 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
             <td class="num">{{ r.tgTokens }}</td>
             <td class="num">{{ r.ppTps.toFixed(2) }}</td>
             <td class="num">{{ r.tgTps.toFixed(2) }}</td>
-            <td><button class="danger small" title="Delete result" @click="removeResult(r)">✕</button></td>
+            <td>
+              <div class="actions">
+                <button class="secondary small" title="Edit result" @click="openEdit(r)">✎</button>
+                <button class="danger small" title="Delete result" @click="removeResult(r)">✕</button>
+              </div>
+            </td>
           </tr>
           <tr v-if="pageData.content.length === 0">
             <td :colspan="showBuildColumn ? 15 : 14" class="muted">no results</td>
@@ -233,6 +361,89 @@ await Promise.all([loadComputers(), loadModels(), loadResults()])
         <button class="secondary small" :disabled="page === 0" @click="page--; loadResults()">← prev</button>
         <span class="muted">page {{ pageData.page + 1 }} / {{ Math.max(pageData.totalPages, 1) }} ({{ pageData.totalElements }} results)</span>
         <button class="secondary small" :disabled="pageData.page + 1 >= pageData.totalPages" @click="page++; loadResults()">next →</button>
+      </div>
+    </div>
+
+    <div v-if="editing" class="modal-backdrop" @click.self="editing = null">
+      <div class="modal">
+        <h2>Edit result</h2>
+        <p class="muted" style="margin-top: -4px">
+          {{ editing.modelName }} ({{ editing.quantization }}) on {{ editing.computerName }} — emptying a text field clears its value.
+        </p>
+
+        <h3>Attribution</h3>
+        <div class="formrow">
+          <div class="filter"><label>Computer</label>
+            <select v-model="form.computerId" @change="onEditComputerChange">
+              <option v-for="c in computers" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </div>
+          <div class="filter"><label>Version</label>
+            <select v-model="form.versionId">
+              <option v-for="v in versions" :key="v.id" :value="v.id">
+                {{ (v.createdAt ?? '').slice(0, 19).replace('T', ' ') }}{{ v.description ? ' — ' + v.description : '' }}
+              </option>
+            </select>
+          </div>
+          <div class="filter"><label>Model</label>
+            <select v-model="form.modelRef">
+              <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }} ({{ m.quantization }})</option>
+            </select>
+          </div>
+        </div>
+
+        <h3>Run</h3>
+        <div class="formrow">
+          <div class="filter"><label>Backend</label><input v-model="form.backend"></div>
+          <div class="filter"><label>Devices (used)</label>
+            <input v-model="form.devices" list="edit-device-options">
+          </div>
+          <datalist id="edit-device-options">
+            <option v-for="c in deviceValues" :key="c" :value="c"></option>
+          </datalist>
+          <div class="filter"><label>ngl</label><input type="number" v-model="form.ngl"></div>
+          <div class="filter"><label>Type K</label><input v-model="form.typeK"></div>
+          <div class="filter"><label>Type V</label><input v-model="form.typeV"></div>
+          <div class="filter"><label>FA</label>
+            <select v-model="form.fa">
+              <option :value="true">yes</option>
+              <option :value="false">no</option>
+            </select>
+          </div>
+          <div class="filter"><label>Threads</label><input type="number" v-model="form.threads"></div>
+          <div class="filter"><label>Load mode</label><input v-model="form.loadMode"></div>
+        </div>
+        <div class="formrow">
+          <div class="filter wide"><label>Model string</label><input v-model="form.modelString"></div>
+          <div class="filter"><label>Size GiB</label><input type="number" step="0.1" v-model="form.sizeGiB"></div>
+          <div class="filter"><label>Build</label><input v-model="form.build"></div>
+          <div class="filter"><label>ts</label><input v-model="form.ts"></div>
+          <div class="filter wide"><label>Imported at (ISO 8601)</label><input v-model="form.importedAt"></div>
+        </div>
+
+        <h3>Params</h3>
+        <table>
+          <thead>
+            <tr><th style="width: 200px">Key</th><th>Value</th><th style="width: 40px"></th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in paramRows" :key="i">
+              <td><input v-model="row.key"></td>
+              <td><input v-model="row.value"></td>
+              <td><button class="danger small" title="Remove" @click="removeParamRow(i)">✕</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="formrow">
+          <button class="secondary small" @click="addParamRow">+ add param</button>
+        </div>
+
+        <div v-if="editError" class="msg error">{{ editError }}</div>
+
+        <div class="formrow" style="justify-content: flex-end">
+          <button class="secondary" :disabled="editBusy" @click="editing = null">Cancel</button>
+          <button :disabled="editBusy" @click="saveEdit">Save</button>
+        </div>
       </div>
     </div>
   </div>

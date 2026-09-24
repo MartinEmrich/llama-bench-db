@@ -1,5 +1,7 @@
 package llamabendb.importer;
 
+import llamabendb.domain.Compute;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -30,8 +32,14 @@ public final class ImportParser {
             double tgDeviation,
             String build,
             String hostname,
-            String hfModelId
+            String hfModelId,
+            List<DeviceDump> deviceDumps,
+            String openvinoType
     ) {
+    }
+
+    /** A device line from a ggml backend dump, e.g. "ggml_vulkan: 0 = AMD Radeon RX 7900 XTX …". */
+    public record DeviceDump(String framework, int index, String name) {
     }
 
     public record ParseResult(List<Dataset> datasets, List<String> modelStrings, int emptyTablesSkipped) {
@@ -55,6 +63,10 @@ public final class ImportParser {
     private static final Pattern ANSI_ESCAPE = Pattern.compile("\u001b\\[[0-9;]*[A-Za-z]");
     private static final Pattern HOSTNAME = Pattern.compile("@([A-Za-z0-9][A-Za-z0-9._-]*)");
     private static final List<String> HF_FLAGS = List.of("-hf", "-hfr", "--hf-repo");
+    private static final Pattern DEVICE_DUMP =
+            Pattern.compile("^\\s*ggml_([a-z0-9_]+):\\s*(\\d+)\\s*=\\s*(.+?)\\s*\\|.*$");
+    private static final Pattern OPENVINO_TYPE =
+            Pattern.compile("^\\s*OpenVINO:\\s*using device\\s+([A-Za-z]+)\\b.*$", Pattern.CASE_INSENSITIVE);
 
     public ParseResult parse(String text) {
         String[] lines = text.replace("\r\n", "\n").replace('\r', '\n').split("\n");
@@ -68,7 +80,8 @@ public final class ImportParser {
                 emptySkipped++;
                 continue;
             }
-            datasets.addAll(toDatasets(table, findBuild(lines, tables, s), attributedCommand(commands, table)));
+            datasets.addAll(toDatasets(table, findBuild(lines, tables, s),
+                    attributedCommand(commands, table), findDeviceDumps(lines, tables, s)));
         }
         if (datasets.isEmpty()) {
             throw new ImportException("no result data found in the pasted text");
@@ -168,6 +181,39 @@ public final class ImportParser {
         return build;
     }
 
+    /**
+     * Device dump lines (ggml backends printing their found devices, plus the
+     * OpenVINO "using device" line) between the previous table (or start of
+     * text) and this table's header. Duplicates for the same framework+index
+     * keep the last occurrence, i.e. the one closest to the table.
+     */
+    private DeviceDumps findDeviceDumps(String[] lines, List<Table> tables, int index) {
+        Table table = tables.get(index);
+        int start = index > 0 ? tables.get(index - 1).lastRowIdx() + 1 : 0;
+        int end = table.line() - 1;
+        Map<String, DeviceDump> byKey = new LinkedHashMap<>();
+        String openvinoType = null;
+        for (int i = start; i < end; i++) {
+            String line = ANSI_ESCAPE.matcher(lines[i]).replaceAll("");
+            Matcher dump = DEVICE_DUMP.matcher(line);
+            if (dump.matches()) {
+                String framework = Compute.canonicalFramework(dump.group(1));
+                int devIndex = Integer.parseInt(dump.group(2));
+                byKey.put(framework + "#" + devIndex,
+                        new DeviceDump(framework, devIndex, dump.group(3).strip()));
+                continue;
+            }
+            Matcher type = OPENVINO_TYPE.matcher(line);
+            if (type.matches()) {
+                openvinoType = type.group(1);
+            }
+        }
+        return new DeviceDumps(List.copyOf(byKey.values()), openvinoType);
+    }
+
+    private record DeviceDumps(List<DeviceDump> dumps, String openvinoType) {
+    }
+
     private List<Table> extractTables(String[] lines) {
         List<Integer> starts = new ArrayList<>();
         for (int i = 0; i + 1 < lines.length; i++) {
@@ -239,7 +285,7 @@ public final class ImportParser {
         return Arrays.stream(s.split("\\|", -1)).map(String::strip).toList();
     }
 
-    private List<Dataset> toDatasets(Table table, String build, CommandLineInfo command) {
+    private List<Dataset> toDatasets(Table table, String build, CommandLineInfo command, DeviceDumps dumps) {
         boolean hasTestColumn = table.rows().get(0).containsKey("test");
         if (!hasTestColumn) {
             throw new ImportException("table at line " + table.line() + " has no 'test' column");
@@ -300,7 +346,9 @@ public final class ImportParser {
                     pp[0], tg[0], pp[1], tg[1],
                     build,
                     command != null ? command.hostname() : null,
-                    command != null ? command.hfModelId() : null));
+                    command != null ? command.hfModelId() : null,
+                    dumps.dumps(),
+                    dumps.openvinoType()));
         }
         return datasets;
     }

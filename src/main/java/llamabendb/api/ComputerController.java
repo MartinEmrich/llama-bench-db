@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -35,7 +36,10 @@ public class ComputerController {
     public record UpdateComputerRequest(String name, String hostname) {
     }
 
-    public record CreateVersionRequest(String description) {
+    public record CreateVersionRequest(String description, Map<String, String> devices) {
+    }
+
+    public record UpdateVersionRequest(String description, Map<String, String> devices) {
     }
 
     private final ComputerRepository computerRepo;
@@ -61,7 +65,7 @@ public class ComputerController {
     public ComputerDetailDto detail(@PathVariable Long id) {
         Computer c = computerRepo.findById(id).orElseThrow(() -> new NotFoundException("computer " + id + " not found"));
         List<VersionDto> versions = versionRepo.findByComputerIdOrderByCreatedAtDesc(id).stream()
-                .map(v -> new VersionDto(v.getId(), v.getCreatedAt(), v.getDescription()))
+                .map(this::toVersionDto)
                 .toList();
         return new ComputerDetailDto(c.getId(), c.getName(), c.getHostname(), versions);
     }
@@ -78,7 +82,7 @@ public class ComputerController {
         c.setName(name);
         c.setHostname(normalizeHostname(req.hostname()));
         c = computerRepo.save(c);
-        addVersion(c, req.description());
+        addVersion(c, req.description(), null);
         return toListDto(c, versionRepo.findByComputerIdOrderByCreatedAtDesc(c.getId()));
     }
 
@@ -117,7 +121,7 @@ public class ComputerController {
             throw new NotFoundException("computer " + id + " not found");
         }
         return versionRepo.findByComputerIdOrderByCreatedAtDesc(id).stream()
-                .map(v -> new VersionDto(v.getId(), v.getCreatedAt(), v.getDescription()))
+                .map(this::toVersionDto)
                 .toList();
     }
 
@@ -126,19 +130,59 @@ public class ComputerController {
     @ResponseStatus(HttpStatus.CREATED)
     public VersionDto addVersion(@PathVariable Long id, @RequestBody CreateVersionRequest req) {
         Computer c = computerRepo.findById(id).orElseThrow(() -> new NotFoundException("computer " + id + " not found"));
-        return toVersionDto(addVersion(c, req.description()));
+        return toVersionDto(addVersion(c, req.description(), req.devices()));
     }
 
-    private ComputerVersion addVersion(Computer c, String description) {
+    /** Edits an existing version's description and/or hardware map. null = unchanged. */
+    @PutMapping("/{id}/versions/{versionId}")
+    @Transactional
+    public VersionDto updateVersion(@PathVariable Long id, @PathVariable Long versionId,
+                                    @RequestBody UpdateVersionRequest req) {
+        if (!computerRepo.existsById(id)) {
+            throw new NotFoundException("computer " + id + " not found");
+        }
+        ComputerVersion v = versionRepo.findById(versionId)
+                .orElseThrow(() -> new NotFoundException("computer version " + versionId + " not found"));
+        if (!v.getComputer().getId().equals(id)) {
+            throw new BadRequestException("version " + versionId + " does not belong to computer " + id);
+        }
+        // null = unchanged, blank = cleared (the form always sends both fields)
+        if (req.description() != null) {
+            v.setDescription(req.description().isBlank() ? null : req.description().strip());
+        }
+        if (req.devices() != null) {
+            v.setDevices(normalizeDevices(req.devices()));
+        }
+        return toVersionDto(v);
+    }
+
+    private ComputerVersion addVersion(Computer c, String description, Map<String, String> devices) {
         ComputerVersion v = new ComputerVersion();
         v.setComputer(c);
         v.setCreatedAt(Instant.now());
         v.setDescription(description);
+        v.setDevices(normalizeDevices(devices));
         return versionRepo.save(v);
     }
 
+    /** Trims entries and drops ones with a blank key or value. */
+    private static Map<String, String> normalizeDevices(Map<String, String> in) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (in != null) {
+            for (Map.Entry<String, String> e : in.entrySet()) {
+                String k = e.getKey() == null ? "" : e.getKey().strip();
+                String val = e.getValue() == null ? "" : e.getValue().strip();
+                if (!k.isEmpty() && !val.isEmpty()) {
+                    out.put(k, val);
+                }
+            }
+        }
+        return out;
+    }
+
     private VersionDto toVersionDto(ComputerVersion v) {
-        return new VersionDto(v.getId(), v.getCreatedAt(), v.getDescription());
+        return new VersionDto(v.getId(), v.getCreatedAt(), v.getDescription(),
+                v.getDevices() == null ? Map.of() : v.getDevices());
     }
 
     private ComputerListDto toListDto(Computer c, List<ComputerVersion> versions) {

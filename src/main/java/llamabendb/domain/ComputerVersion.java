@@ -9,8 +9,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Entity
 @Table(name = "computer_version")
@@ -29,6 +33,15 @@ public class ComputerVersion {
 
     @Column(length = 4000)
     private String description;
+
+    /**
+     * Known hardware of this version: special keys "CPU" and "MEM" plus one key
+     * per device name (e.g. "Vulkan0", "OPENVINO0_NPU"); values are free text.
+     */
+    // Nullable: rows created before V4 have no hardware data; null means empty.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "devices")
+    private Map<String, String> devices = new LinkedHashMap<>();
 
     public Long getId() {
         return id;
@@ -56,5 +69,13 @@ public class ComputerVersion {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public Map<String, String> getDevices() {
+        return devices;
+    }
+
+    public void setDevices(Map<String, String> devices) {
+        this.devices = devices;
     }
 }

@@ -14,7 +14,8 @@ public record ExportDto(
     public record ComputerExport(Long id, String name, String hostname, List<VersionExport> versions) {
     }
 
-    public record VersionExport(Long id, Long computerId, Instant createdAt, String description) {
+    public record VersionExport(Long id, Long computerId, Instant createdAt, String description,
+                                Map<String, String> devices) {
     }
 
     public record ModelExport(Long id, String name, String modelId, String quantization, Double sizeGiB) {

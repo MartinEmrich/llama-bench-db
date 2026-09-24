@@ -4,6 +4,7 @@ import llamabendb.api.BadRequestException;
 import llamabendb.api.NotFoundException;
 import llamabendb.api.dto.ImportResponse;
 import llamabendb.domain.Computer;
+import llamabendb.domain.Compute;
 import llamabendb.domain.ComputerVersion;
 import llamabendb.domain.HfModelId;
 import llamabendb.domain.Model;
@@ -19,9 +20,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,11 +107,24 @@ public class ImportService {
 
         String fallbackBuild = build == null || build.isBlank() ? null : build.strip();
         List<Result> results = new ArrayList<>();
+        boolean devicesUnknown = false;
+        Set<Long> hardwareWarnedVersions = new HashSet<>();
         for (int i = 0; i < parsed.datasets().size(); i++) {
             ImportParser.Dataset d = parsed.datasets().get(i);
-            Result r = toEntity(d, resolved.get(i).version(), resolved.get(i).model(), fallbackBuild);
-            addDeviceWarning(r, warnings);
+            ComputerVersion version = resolved.get(i).version();
+            Result r = toEntity(d, version, resolved.get(i).model(), fallbackBuild);
+            addDeviceWarning(d.fields().get("dev"), d.fields().get("backend"), warnings);
+            if (r.getDevices() == null) {
+                devicesUnknown = true;
+                warnings.add(new ImportResponse.Warning("DEVICES_UNKNOWN",
+                        "could not determine the devices used for run '" + d.modelString()
+                                + "' - the devices field will be left empty"));
+            }
+            addHardwareWarning(d, version, warnings, hardwareWarnedVersions);
             results.add(r);
+        }
+        if (devicesUnknown && !acknowledgeWarnings) {
+            return new ImportResponse(List.of(), warnings, true);
         }
         resultRepo.saveAll(results);
 
@@ -201,20 +218,69 @@ public class ImportService {
         return modelRepo.save(m);
     }
 
-    private void addDeviceWarning(Result r, List<ImportResponse.Warning> warnings) {
-        if (r.getDevices() == null || r.getBackend() == null) {
+    /** Warns when the run's raw dev value names a device absent from its backend list. */
+    private void addDeviceWarning(String rawDev, String backend, List<ImportResponse.Warning> warnings) {
+        if (rawDev == null || backend == null) {
             return;
         }
-        String devices = r.getDevices().strip();
+        String devices = rawDev.strip();
         if (devices.equalsIgnoreCase("none")) {
             return;
         }
         String base = devices.replaceAll("\\d+$", "");
-        List<String> backends = Arrays.stream(r.getBackend().split(",")).map(String::strip).toList();
+        List<String> backends = Arrays.stream(backend.split(",")).map(String::strip).toList();
         if (!backends.contains(base)) {
             warnings.add(new ImportResponse.Warning("DEVICE_NOT_IN_BACKEND",
-                    "device '" + devices + "' is not listed among the available backends '" + r.getBackend() + "'"));
+                    "device '" + devices + "' is not listed among the available backends '" + backend + "'"));
         }
+    }
+
+    /**
+     * Warns (without modifying anything and without creating versions) when the
+     * run's device dump disagrees with the hardware stored on its computer
+     * version. Only backend families that actually produced dump lines in this
+     * run are compared, so e.g. a CPU-only run says nothing about GPU keys.
+     */
+    private void addHardwareWarning(ImportParser.Dataset d, ComputerVersion version,
+                                    List<ImportResponse.Warning> warnings, Set<Long> warnedVersions) {
+        if (d.deviceDumps().isEmpty() || !warnedVersions.add(version.getId())) {
+            return;
+        }
+        Map<String, String> observed = new LinkedHashMap<>();
+        Set<String> families = new HashSet<>();
+        for (ImportParser.DeviceDump dump : d.deviceDumps()) {
+            families.add(dump.framework());
+            String type = "OpenVINO".equals(dump.framework()) ? d.openvinoType() : null;
+            String name = Compute.deviceName(dump.framework(), dump.index(), type);
+            if (name != null) {
+                observed.putIfAbsent(name, dump.name());
+            }
+        }
+        Map<String, String> stored = version.getDevices() == null ? Map.of() : version.getDevices();
+
+        List<String> diffs = new ArrayList<>();
+        for (Map.Entry<String, String> e : observed.entrySet()) {
+            String s = stored.get(e.getKey());
+            if (s == null) {
+                diffs.add("new device " + e.getKey() + "=" + e.getValue());
+            } else if (!s.equals(e.getValue())) {
+                diffs.add(e.getKey() + ": stored '" + s + "' but run shows '" + e.getValue() + "'");
+            }
+        }
+        for (Map.Entry<String, String> e : stored.entrySet()) {
+            if (families.contains(Compute.familyOf(e.getKey())) && !observed.containsKey(e.getKey())) {
+                diffs.add("stored device " + e.getKey() + "=" + e.getValue() + " not seen in this run");
+            }
+        }
+        if (diffs.isEmpty()) {
+            return;
+        }
+        String versionDate = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC)
+                .format(version.getCreatedAt());
+        warnings.add(new ImportResponse.Warning("HARDWARE_MISMATCH", String.format(
+                "run on '%s' reports hardware that differs from the stored version of %s: %s"
+                        + " - review or update the computer's versions",
+                version.getComputer().getName(), versionDate, String.join("; ", diffs))));
     }
 
     private Result toEntity(ImportParser.Dataset d, ComputerVersion version, Model model, String fallbackBuild) {
@@ -226,7 +292,8 @@ public class ImportService {
         r.setModelString(d.modelString());
         r.setSizeGiBObserved(d.sizeGiB());
         r.setBackend(f.get("backend"));
-        r.setDevices(f.get("dev"));
+        // devices records which devices the run used; null when undeterminable.
+        r.setDevices(Compute.resolve(f, d.openvinoType()));
         r.setNgl(parseInt(f.get("ngl"), "ngl", -1));
         r.setTypeK(blankToDefault(f.get("type_k"), "f16"));
         r.setTypeV(blankToDefault(f.get("type_v"), "f16"));
@@ -249,6 +316,11 @@ public class ImportService {
         // A build line in the paste wins over the form-supplied value.
         r.setBuild(d.build() != null ? d.build() : fallbackBuild);
         Map<String, Object> params = new LinkedHashMap<>();
+        // Record of the raw dev column value, as printed by llama-bench.
+        String rawDev = f.get("dev");
+        if (rawDev != null && !rawDev.isBlank()) {
+            params.put("dev", rawDev.strip());
+        }
         f.forEach((k, v) -> {
             if (!KNOWN_COLUMNS.contains(k)) {
                 params.put(k, v);
