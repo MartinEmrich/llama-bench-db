@@ -7,7 +7,7 @@ Spring Boot 4.1.1 (Java 25, Gradle 9.7.1 wrapper, single module) + Nuxt 4 SPA in
 - Backend dev: `./gradlew bootRun` — port 8080, H2 file DB at `./data/llamabendb` (gitignored; data persists between runs).
 - Tests: `./gradlew test`; single class: `./gradlew test --tests "llamabendb.importer.ImportParserTest"`. Integration tests boot the full app against in-memory H2.
 - Frontend dev: `npm run dev` in `frontend/` — its Vite proxy forwards `/api` to **localhost:8081**, so run the backend on 8081 for frontend dev (e.g. `./gradlew bootRun --args='--server.port=8081'`).
-- Full jar with UI: build the frontend first (`npm run build` in `frontend/`, which also runs `scripts/gen-entry.mjs` to produce `dist/`), then `./gradlew bootJar`. Without `frontend/dist` the jar builds fine but contains no UI (copy task is NO-SOURCE).
+- Full jar with UI: `./gradlew build` (or `bootJar`) — Gradle builds the frontend automatically (`npmInstall` + `nuxtBuild`, which runs `nuxt build` and `scripts/gen-entry.mjs` to produce `frontend/dist/`). Requires Node.js >= 20 and npm on PATH.
 - Other DBs: `--spring.profiles.active=postgres|mariadb`, env `DB_URL` / `DB_USER` / `DB_PASSWORD`.
 
 ## Domain model
@@ -24,4 +24,5 @@ Spring Boot 4.1.1 (Java 25, Gradle 9.7.1 wrapper, single module) + Nuxt 4 SPA in
 - Import parsing is server-side (`importer/ImportParser.java`); parser test fixtures are sanitized transcripts in `src/test/resources/samples/`.
 - `llama-bench-help.txt` (repo root) is the canonical llama-bench parameter list — needed for Phase 8 parameter normalization.
 - `local_samples/` holds real transcripts for manually testing import; gitignored, never commit it.
+- Frontend build artifacts (`frontend/node_modules/`, `frontend/.output/`, `frontend/dist/`) are gitignored and produced by the Gradle tasks `npmInstall`/`nuxtBuild`. Delete them to force a full frontend rebuild; gen-entry binds port 39871 while running.
 - No lint, formatter, typecheck, or CI is configured; `./gradlew test` is the only automated check.

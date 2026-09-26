@@ -33,11 +33,37 @@ tasks.named<Test>("test") {
     useJUnitPlatform()
 }
 
+// Installs frontend dependencies from the committed lockfile (requires node
+// >= 20 and npm on PATH). The marker file lives inside node_modules so it
+// vanishes with it; tracking a single file keeps the up-to-date check cheap.
+val npmInstall = tasks.register<Exec>("npmInstall") {
+    workingDir = layout.projectDirectory.dir("frontend").asFile
+    commandLine("npm", "ci", "--no-audit", "--no-fund")
+    inputs.file("frontend/package.json")
+    inputs.file("frontend/package-lock.json")
+    outputs.file(layout.projectDirectory.file("frontend/node_modules/.gradle-npm-ci"))
+    // Writes the marker via the task receiver so the action captures nothing
+    // from script scope (configuration cache forbids script object refs).
+    doLast { outputs.files.singleFile.writeText("ok\n") }
+}
+
+// Builds the Nuxt SPA: `nuxt build` plus scripts/gen-entry.mjs, which boots
+// the built server on port 39871 and captures the SPA entry into dist/.
+val nuxtBuild = tasks.register<Exec>("nuxtBuild") {
+    dependsOn(npmInstall)
+    workingDir = layout.projectDirectory.dir("frontend").asFile
+    commandLine("npm", "run", "build")
+    inputs.files(fileTree("frontend") {
+        exclude("dist/**", ".output/**", "node_modules/**")
+    })
+    outputs.dir(layout.projectDirectory.dir("frontend/dist"))
+}
+
 // Copies the built Nuxt frontend into its own output dir, which the jar
-// bundles under /static/. Runs as NO-SOURCE (skipped) when frontend/dist
-// does not exist yet. bootJar repackages the plain jar, so it picks the
+// bundles under /static/. bootJar repackages the plain jar, so it picks the
 // frontend up automatically.
 val copyFrontendDist = tasks.register<Copy>("copyFrontendDist") {
+    dependsOn(nuxtBuild)
     from("frontend/dist")
     into(layout.buildDirectory.dir("frontend-dist"))
 }
