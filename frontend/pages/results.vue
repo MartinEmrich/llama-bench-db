@@ -50,6 +50,16 @@ const filters = ref({
 const sort = ref('importedAt,desc')
 const page = ref(0)
 
+// The import form is collapsed by default; v-show (not v-if) keeps a
+// half-pasted draft alive across hide/show.
+const importOpen = ref(false)
+
+// Additional table columns, hidden by default and toggled from the
+// "additional columns" widget in the filter bar.
+const showImported = ref(false)
+const showBuild = ref(false)
+const extraColsOpen = ref(false)
+
 async function loadComputers() { computers.value = await $fetch('/api/computers') }
 async function loadModels() { models.value = await $fetch('/api/models') }
 
@@ -227,9 +237,10 @@ function segmentStyle(seg: DeviceSegment): Record<string, string> {
   }
 }
 
-// The Build column only earns its width when the current page actually
-// distinguishes builds; otherwise the value is still reachable via hover.
-const showBuildColumn = computed(() => new Set(pageData.value.content.map(r => r.build)).size > 1)
+// Column count for the "no results" row; the model column spans two cells.
+const tableColSpan = computed(() =>
+  9 + (showImported.value ? 1 : 0) + (filters.value.computerId === '' ? 1 : 0)
+    + (filters.value.model === '' ? 2 : 0) + (showBuild.value ? 1 : 0))
 
 const details = ref<{ row: ResultRow; top: number; left: number } | null>(null)
 let hoverTimer: ReturnType<typeof setTimeout> | null = null
@@ -253,14 +264,23 @@ function onRowLeave() {
   details.value = null
 }
 
-async function removeResult(r: ResultRow) {
-  if (!confirm(`Delete result ${r.modelName} (${r.computerName}, ${r.importedAt.slice(0, 10)})?`)) return
+async function removeResult(r: ResultRow): Promise<boolean> {
+  if (!confirm(`Delete result ${r.modelName} (${r.computerName}, ${r.importedAt.slice(0, 10)})?`)) return false
   try {
     await $fetch(`/api/results/${r.id}`, { method: 'DELETE' })
     loadResults()
+    return true
   } catch (e: any) {
     alert(e.data?.error ?? e.message)
+    return false
   }
+}
+
+// Delete from the edit dialog; keeps the dialog open when the confirm is cancelled.
+async function deleteFromEdit() {
+  const r = editing.value
+  if (!r) return
+  if (await removeResult(r)) editing.value = null
 }
 
 // Edit dialog. The form always sends every field: null = unchanged, empty
@@ -367,6 +387,21 @@ function uploaderOf(r: ResultRow): string {
   return i >= 0 ? r.modelId.slice(0, i) : ''
 }
 
+// Short form of a quant for narrow windows; the last 8 chars keep the size class visible.
+function qShort(q: string): string {
+  return q.length > 8 ? '…' + q.slice(-8) : q
+}
+
+// Latest version date per computer (from /api/computers), for the outdated-version marker.
+const latestVersionByComputer = computed(() => new Map(computers.value.map((c: any) => [c.id, c.latestVersionAt])))
+
+function isCurrentVersion(r: ResultRow): boolean {
+  const latest = latestVersionByComputer.value.get(r.computerId)
+  // No marker while the computer list is still loading.
+  return latest === undefined || latest === r.versionDate
+}
+
+
 // Drop a quant that does not exist for the newly selected base model.
 watch(() => filters.value.model, () => {
   if (filters.value.quant !== '' && !quantOptions.value.includes(filters.value.quant)) {
@@ -394,9 +429,15 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
   <div>
     <h1>Results</h1>
 
-    <ClientOnly>
-      <ImportForm @imported="onImported" />
-    </ClientOnly>
+    <div v-show="!importOpen" class="import-collapsed">
+      <button @click="importOpen = true">Import results</button>
+    </div>
+    <div v-show="importOpen" class="import-open">
+      <button class="hide-btn" title="Hide import form" @click="importOpen = false">Hide</button>
+      <ClientOnly>
+        <ImportForm @imported="onImported" />
+      </ClientOnly>
+    </div>
 
     <div class="panel">
       <div class="filters">
@@ -437,22 +478,28 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
         <div class="filter"><label>PP t/s max</label><input type="number" step="0.1" v-model="filters.ppTpsMax"></div>
         <div class="filter"><label>TG t/s min</label><input type="number" step="0.1" v-model="filters.tgTpsMin"></div>
         <div class="filter"><label>TG t/s max</label><input type="number" step="0.1" v-model="filters.tgTpsMax"></div>
+        <div class="extra-cols">
+          <button type="button" @click="extraColsOpen = !extraColsOpen">additional columns {{ extraColsOpen ? '▾' : '▸' }}</button>
+          <span v-show="extraColsOpen" class="extra-cols-body">
+            <label><input type="checkbox" v-model="showImported"> Imported</label>
+            <label><input type="checkbox" v-model="showBuild"> Build</label>
+          </span>
+        </div>
       </div>
 
       <table>
         <thead>
           <tr>
-            <th class="sortable" @click="onSort('importedAt')">Imported{{ sortIndicator('importedAt') }}</th>
-            <th class="sortable" @click="onSort('computer')">Computer{{ sortIndicator('computer') }}</th>
-            <th class="sortable" colspan="2" @click="onSort('model')">Model{{ sortIndicator('model') }}</th>
+            <th v-if="showImported" class="sortable" @click="onSort('importedAt')">Imported{{ sortIndicator('importedAt') }}</th>
+            <th v-if="filters.computerId === ''" class="sortable" @click="onSort('computer')">Computer{{ sortIndicator('computer') }}</th>
+            <th v-if="filters.model === ''" class="sortable" colspan="2" @click="onSort('model')">Model{{ sortIndicator('model') }}</th>
             <th class="sortable" @click="onSort('quant')">Quant{{ sortIndicator('quant') }}</th>
             <th class="devices-col">Devices</th>
             <th class="num sortable" @click="onSort('ngl')">ngl{{ sortIndicator('ngl') }}</th>
             <th>KV Cache</th>
             <th>Params</th>
-            <th v-if="showBuildColumn">Build</th>
-            <th class="num sortable" @click="onSort('ppTokens')">PP tok{{ sortIndicator('ppTokens') }}</th>
-            <th class="num sortable" @click="onSort('tgTokens')">TG tok{{ sortIndicator('tgTokens') }}</th>
+            <th v-if="showBuild">Build</th>
+            <th class="num"><span class="sortable" @click="onSort('ppTokens')">PP{{ sortIndicator('ppTokens') }}</span>/<span class="sortable" @click="onSort('tgTokens')">TG{{ sortIndicator('tgTokens') }}</span> tok</th>
             <th class="num sortable" @click="onSort('ppTps')">PP t/s{{ sortIndicator('ppTps') }}</th>
             <th class="num sortable" @click="onSort('tgTps')">TG t/s{{ sortIndicator('tgTps') }}</th>
             <th></th>
@@ -460,11 +507,14 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
         </thead>
         <tbody>
           <tr v-for="r in pageData.content" :key="r.id" @mouseenter="onRowEnter($event, r)" @mouseleave="onRowLeave">
-            <td class="muted">{{ r.importedAt.slice(0, 16).replace('T', ' ') }}</td>
-            <td>{{ r.computerName }} <span class="muted">{{ r.versionDate.slice(0, 10) }}</span></td>
-            <td class="model-uploader">{{ uploaderOf(r) }}{{ uploaderOf(r) ? '/' : '' }}</td>
-            <td class="model-name" :title="r.modelId">{{ r.modelName }}</td>
-            <td>{{ r.quantization }}</td>
+            <td v-if="showImported" class="muted">{{ r.importedAt.slice(0, 16).replace('T', ' ') }}</td>
+            <td v-if="filters.computerId === ''" class="computer-cell">{{ r.computerName }}<span v-if="!isCurrentVersion(r)" class="version-mark" title="not the current version">†</span></td>
+            <td v-if="filters.model === ''" class="model-uploader">{{ uploaderOf(r) }}{{ uploaderOf(r) ? '/' : '' }}</td>
+            <td v-if="filters.model === ''" class="model-name" :title="r.modelId">{{ r.modelName }}</td>
+            <td :title="r.quantization">
+              <span class="q-full">{{ r.quantization }}</span>
+              <span class="q-short">{{ qShort(r.quantization) }}</span>
+            </td>
             <td class="devices-col">
               <div v-if="deviceSegments(r).length > 0" class="device-bar">
                 <span v-for="(seg, i) in deviceSegments(r)" :key="i" class="device-block" :style="segmentStyle(seg)">
@@ -476,28 +526,31 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
             <td class="num">{{ r.ngl }}</td>
             <td>{{ r.typeK }}/{{ r.typeV }}<span v-if="!r.fa" class="muted" style="font-size:12px"> (No FA)</span></td>
             <td class="params-cell">
-              <span v-for="[k, v] in sortedParams(r)" :key="k" class="param" :title="`${k}=${v}`">{{ k }}=<span class="param-val">{{ v }}</span></span>
+              <div class="params-grid">
+                <template v-for="[k, v] in sortedParams(r)" :key="k">
+                  <span class="pk" :title="`${k}=${v}`">{{ k }}</span><span class="pv">={{ v }}</span>
+                </template>
+              </div>
             </td>
-            <td v-if="showBuildColumn">{{ r.build ?? '' }}</td>
-            <td class="num">{{ r.ppTokens }}</td>
-            <td class="num">{{ r.tgTokens }}</td>
+            <td v-if="showBuild" class="build-cell" :title="r.build ?? undefined">{{ r.build ?? '' }}</td>
+            <td class="num">{{ r.ppTokens }}/{{ r.tgTokens }}</td>
             <td class="num">{{ r.ppTps.toFixed(2) }}</td>
             <td class="num">{{ r.tgTps.toFixed(2) }}</td>
             <td>
               <div class="actions">
                 <button class="secondary small" title="Edit result" @click="openEdit(r)">✎</button>
-                <button class="danger small" title="Delete result" @click="removeResult(r)">✕</button>
               </div>
             </td>
           </tr>
           <tr v-if="pageData.content.length === 0">
-            <td :colspan="showBuildColumn ? 15 : 14" class="muted">no results</td>
+            <td :colspan="tableColSpan" class="muted">no results</td>
           </tr>
         </tbody>
       </table>
 
       <div v-if="details" class="details-box" :style="{ top: details.top + 'px', left: details.left + 'px' }">
         <div class="details-row"><span class="k">build</span><span>{{ details.row.build ?? '—' }}</span></div>
+        <div class="details-row"><span class="k">version</span><span>{{ details.row.versionDate.slice(0, 16).replace('T', ' ') }}</span></div>
         <div class="details-row"><span class="k">backend</span><span>{{ details.row.backend ?? '—' }}</span></div>
         <div class="details-row"><span class="k">pp deviation</span><span>± {{ details.row.ppDeviation }}</span></div>
         <div class="details-row"><span class="k">tg deviation</span><span>± {{ details.row.tgDeviation }}</span></div>
@@ -587,7 +640,9 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
 
         <div v-if="editError" class="msg error">{{ editError }}</div>
 
-        <div class="formrow" style="justify-content: flex-end">
+        <div class="formrow">
+          <button class="danger" :disabled="editBusy" @click="deleteFromEdit">Delete</button>
+          <span style="flex: 1"></span>
           <button class="secondary" :disabled="editBusy" @click="editing = null">Cancel</button>
           <button :disabled="editBusy" @click="saveEdit">Save</button>
         </div>

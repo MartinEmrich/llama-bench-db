@@ -44,7 +44,7 @@ body {
 h1 { font-size: 20px; margin: 0 0 16px; }
 h2 { font-size: 16px; margin: 20px 0 10px; }
 
-.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
 
 table { width: 100%; border-collapse: collapse; background: var(--panel); }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -100,13 +100,16 @@ button.small { padding: 3px 8px; font-size: 12px; }
 .msg.warn { background: var(--warn-bg); border-color: var(--warn-border); color: #78350f; }
 .msg.ok { background: var(--ok-bg); border-color: var(--ok-border); color: #14532d; }
 
-.params-cell { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; white-space: nowrap; }
-.param { margin-right: 8px; }
-.param-val { display: inline-block; min-width: 4ch; }
+/* Params stacked one per line, aligned at '='; tighter than the row around it. */
+td.params-cell { padding-top: 1px; padding-bottom: 1px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; }
+/* One param per line, no wrapping (the td's nowrap applies); long values
+   widen the column instead of breaking mid-value. */
+.params-grid { display: grid; grid-template-columns: max-content auto; line-height: 1.2; }
+.params-grid .pk { text-align: right; }
 
 /* Device split gauge in the results table: one block per used device,
    GPU blocks sized by their -ts share, CPU a minimal fixed block. */
-.devices-col { width: 280px; min-width: 280px; max-width: 280px; }
+.devices-col { min-width: 140px; max-width: 260px; }
 .device-bar { display: flex; gap: 2px; width: 100%; }
 .device-block {
   display: flex;
@@ -143,8 +146,47 @@ button.small { padding: 3px 8px; font-size: 12px; }
 /* Model column: uploader right-aligned against the model name, which stays
    left-aligned at one fixed x for every row (the table sizes the uploader
    column to the widest uploader). Inner padding zeroed so the two touch. */
-td.model-uploader { text-align: right; padding-right: 0; font-size: 12px; color: #4a5568; }
-td.model-name { padding-left: 0; }
+td.model-uploader { text-align: right; padding-right: 0; font-size: 12px; color: #4a5568; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+td.model-name { padding-left: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Width caps so the table fits the window width; ellipsis under pressure. */
+td.computer-cell { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+td.build-cell { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Quant column: full value on wide windows, '…' + last 8 below 1280px. */
+.q-short { display: none; }
+@media (max-width: 1280px) {
+  .q-full { display: none; }
+  .q-short { display: inline; }
+}
+.version-mark { color: var(--muted); font-size: 12px; margin-left: 3px; }
+
+/* Collapsible import area on the results page. */
+.import-collapsed { margin-bottom: 16px; }
+.import-open { position: relative; }
+.hide-btn {
+  position: absolute;
+  top: 10px; right: 14px;
+  font-size: 12px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.hide-btn:hover { color: var(--text); }
+
+/* "Additional columns" widget in the filter bar (collapsed by default). */
+.extra-cols { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.extra-cols > button { font-size: 12px; color: var(--muted); background: none; border: none; padding: 4px 2px; cursor: pointer; }
+.extra-cols > button:hover { color: var(--text); }
+.extra-cols-body { display: flex; gap: 10px; font-size: 12px; color: var(--muted); }
+.extra-cols-body label { display: flex; align-items: center; gap: 4px; }
+
+/* Sortable spans inside a header cell (PP / TG of the merged token column). */
+th .sortable { cursor: pointer; user-select: none; }
+th .sortable:hover { color: var(--accent); }
 
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 .actions { display: flex; gap: 6px; }
