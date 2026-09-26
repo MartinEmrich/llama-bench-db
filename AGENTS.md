@@ -8,6 +8,7 @@ Spring Boot 4.1.1 (Java 25, Gradle 9.7.1 wrapper, single module) + Nuxt 4 SPA in
 - Tests: `./gradlew test`; single class: `./gradlew test --tests "llamabendb.importer.ImportParserTest"`. Integration tests boot the full app against in-memory H2.
 - Frontend dev: `npm run dev` in `frontend/` — its Vite proxy forwards `/api` to **localhost:8081**, so run the backend on 8081 for frontend dev (e.g. `./gradlew bootRun --args='--server.port=8081'`).
 - Full jar with UI: `./gradlew build` (or `bootJar`) — Gradle builds the frontend automatically (`npmInstall` + `nuxtBuild`, which runs `nuxt build` and `scripts/gen-entry.mjs` to produce `frontend/dist/`). Requires Node.js >= 20 and npm on PATH.
+- Docker: `docker build -t llama-bench-db .` from the repo root (needs the boot jar; image defaults to the postgres profile, see README). No container runtime exists in this sandbox — do not try to build or run the container here.
 - Other DBs: `--spring.profiles.active=postgres|mariadb`, env `DB_URL` / `DB_USER` / `DB_PASSWORD`.
 
 ## Domain model
