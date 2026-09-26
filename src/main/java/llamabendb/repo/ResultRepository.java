@@ -34,7 +34,7 @@ public interface ResultRepository extends JpaRepository<Result, Long>, JpaSpecif
             where (:computerId is null or comp.id = :computerId)
               and (:versionId is null or cv.id = :versionId)
               and (:modelId is null or m.id = :modelId)
-              and (:model is null or m.modelId = :model)
+              and (:model is null or m.name = :model or m.modelId = :model)
               and (:quant is null or m.quantization = :quant)
               and (:devices is null or r.devices = :devices)
               and (:devicesEmpty is null or :devicesEmpty = false or r.devices is null)

@@ -348,18 +348,24 @@ async function saveEdit() {
   }
 }
 
-// One entry per base model (modelId), regardless of how many quants exist.
+// One entry per base model name, across all uploaders and quants.
 const baseModels = computed(() => {
   const seen = new Map<string, any>()
-  for (const m of models.value) if (!seen.has(m.modelId)) seen.set(m.modelId, m)
+  for (const m of models.value) if (!seen.has(m.name)) seen.set(m.name, m)
   return [...seen.values()]
 })
 
 // Quants available for the selected base model; all quants when none is selected.
 const quantOptions = computed(() => {
   const sel = filters.value.model
-  return [...new Set(models.value.filter((m: any) => !sel || m.modelId === sel).map((m: any) => m.quantization))]
+  return [...new Set(models.value.filter((m: any) => !sel || m.name === sel).map((m: any) => m.quantization))]
 })
+
+// Uploader part of the HF repo id ('' when the model has none).
+function uploaderOf(r: ResultRow): string {
+  const i = r.modelId.indexOf('/')
+  return i >= 0 ? r.modelId.slice(0, i) : ''
+}
 
 // Drop a quant that does not exist for the newly selected base model.
 watch(() => filters.value.model, () => {
@@ -405,7 +411,7 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
           <label>Model</label>
           <select v-model="filters.model">
             <option value="">all</option>
-            <option v-for="m in baseModels" :key="m.modelId" :value="m.modelId">{{ m.name }}</option>
+            <option v-for="m in baseModels" :key="m.name" :value="m.name">{{ m.name }}</option>
           </select>
         </div>
         <div class="filter">
@@ -438,7 +444,7 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
           <tr>
             <th class="sortable" @click="onSort('importedAt')">Imported{{ sortIndicator('importedAt') }}</th>
             <th class="sortable" @click="onSort('computer')">Computer{{ sortIndicator('computer') }}</th>
-            <th class="sortable" @click="onSort('model')">Model{{ sortIndicator('model') }}</th>
+            <th class="sortable" colspan="2" @click="onSort('model')">Model{{ sortIndicator('model') }}</th>
             <th class="sortable" @click="onSort('quant')">Quant{{ sortIndicator('quant') }}</th>
             <th class="devices-col">Devices</th>
             <th class="num sortable" @click="onSort('ngl')">ngl{{ sortIndicator('ngl') }}</th>
@@ -456,7 +462,8 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
           <tr v-for="r in pageData.content" :key="r.id" @mouseenter="onRowEnter($event, r)" @mouseleave="onRowLeave">
             <td class="muted">{{ r.importedAt.slice(0, 16).replace('T', ' ') }}</td>
             <td>{{ r.computerName }} <span class="muted">{{ r.versionDate.slice(0, 10) }}</span></td>
-            <td :title="r.modelId">{{ r.modelName }}</td>
+            <td class="model-uploader">{{ uploaderOf(r) }}{{ uploaderOf(r) ? '/' : '' }}</td>
+            <td class="model-name" :title="r.modelId">{{ r.modelName }}</td>
             <td>{{ r.quantization }}</td>
             <td class="devices-col">
               <div v-if="deviceSegments(r).length > 0" class="device-bar">
@@ -484,7 +491,7 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
             </td>
           </tr>
           <tr v-if="pageData.content.length === 0">
-            <td :colspan="showBuildColumn ? 14 : 13" class="muted">no results</td>
+            <td :colspan="showBuildColumn ? 15 : 14" class="muted">no results</td>
           </tr>
         </tbody>
       </table>
@@ -527,7 +534,7 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
           </div>
           <div class="filter"><label>Model</label>
             <select v-model="form.modelRef">
-              <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }} ({{ m.quantization }})</option>
+              <option v-for="m in models" :key="m.id" :value="m.id">{{ m.modelId }} ({{ m.quantization }})</option>
             </select>
           </div>
         </div>

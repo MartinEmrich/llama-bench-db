@@ -227,7 +227,7 @@ await loadModels()
         <label>Model</label>
         <select v-model="modelId" @change="onModelChange">
           <option value="">autodetect</option>
-          <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }} ({{ m.quantization }})</option>
+          <option v-for="m in models" :key="m.id" :value="m.id">{{ m.modelId }} ({{ m.quantization }})</option>
         </select>
         <div v-if="modelHint" :class="['hint', modelHint.kind]">{{ modelHint.text }}</div>
       </div>

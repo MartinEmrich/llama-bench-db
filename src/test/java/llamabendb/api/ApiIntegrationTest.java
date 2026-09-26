@@ -582,17 +582,22 @@ class ApiIntegrationTest {
     }
 
     @Test
-    void listFiltersByBaseModelAcrossQuants() throws Exception {
+    void listFiltersByBaseModelAcrossQuantsAndUploaders() throws Exception {
         long computer = createComputer("filter-box");
         long version = versionOf(computer);
         long q4 = createModel("acme/Filter-4B-GGUF:Q4_K_M", null);
         long q5 = createModel("acme/Filter-4B-GGUF:Q5_K_S", null);
+        long twin = createModel("otherup/Filter-4B-GGUF:Q5_K_S", null);
         long other = createModel("acme/Other-4B-GGUF:Q4_K_M", null);
 
         importText(computer, version, q4, MINIMAL_TABLE);
         importText(computer, version, q5, MINIMAL_TABLE);
+        importText(computer, version, twin, MINIMAL_TABLE);
         importText(computer, version, other, MINIMAL_TABLE);
 
+        // The base name covers every uploader and quant of the model.
+        assertEquals(3, getJson("/api/results?model=Filter-4B").get("totalElements").asLong());
+        // A full repo id still selects only that uploader's results.
         assertEquals(2, getJson("/api/results?model=acme/Filter-4B-GGUF").get("totalElements").asLong());
         assertEquals(1, getJson("/api/results?model=acme/Other-4B-GGUF").get("totalElements").asLong());
         assertEquals(0, getJson("/api/results?model=acme/Missing-4B-GGUF").get("totalElements").asLong());
