@@ -93,6 +93,140 @@ function sortedParams(r: ResultRow): [string, string][] {
     .sort(([a], [b]) => a.localeCompare(b))
 }
 
+// Device split gauge: one segment per used device (GPUs first, CPU last),
+// block width proportional to its -ts share. The CPU share is unknown for
+// now, so the CPU block takes a minimal width fitting its label; if a
+// numeric value ever becomes available it gets a weight like the GPUs'.
+
+interface DeviceSegment {
+  name: string
+  family: string
+  value: number | null
+  weight: number | null
+  isCpu: boolean
+  gpuIndex: number
+}
+
+const FAMILY_COLORS: Record<string, string> = {
+  CUDA: '#16a34a',
+  Vulkan: '#dc2626',
+  ROCm: '#dc2626',
+  OpenVINO: '#2563eb',
+  SYCL: '#2563eb',
+  CPU: '#94a3b8'
+}
+const OTHER_COLOR = '#f59e0b'
+// White mix (%) per GPU position: first GPU saturated, later ones muted.
+const MUTED_MIX = [0, 45, 65, 80]
+
+function familyOf(deviceKey: string): string {
+  let s = deviceKey.trim()
+  const us = s.lastIndexOf('_')
+  if (us > 0) s = s.slice(0, us)
+  const m = s.match(/^([A-Za-z]+)\d*$/)
+  if (!m) return 'Other'
+  switch (m[1].toLowerCase()) {
+    case 'cpu': return 'CPU'
+    case 'vulkan': return 'Vulkan'
+    case 'cuda': return 'CUDA'
+    case 'rocm': return 'ROCm'
+    case 'openvino': return 'OpenVINO'
+    case 'sycl': return 'SYCL'
+    case 'metal': return 'Metal'
+    default: return m[1]
+  }
+}
+
+function parseTs(ts: string | null): number[] {
+  if (!ts) return []
+  const out: number[] = []
+  for (const part of ts.split(/[/;]/)) {
+    const v = Number.parseFloat(part.trim())
+    if (Number.isFinite(v) && v > 0) out.push(v)
+  }
+  return out
+}
+
+// MoE experts offloaded to the CPU: -ncmoe/-cmoe in any table spelling.
+function moeOffload(r: ResultRow): boolean {
+  for (const key of ['n_cpu_moe', 'cmoe', 'cpu-moe']) {
+    const raw = r.params?.[key]
+    if (raw === undefined || raw === null) continue
+    const s = String(raw).trim()
+    if (s === '') continue
+    const n = Number.parseFloat(s)
+    if (!Number.isFinite(n)) return true // non-numeric value means "all"
+    if (n > 0) return true
+  }
+  return false
+}
+
+function deviceSegments(r: ResultRow): DeviceSegment[] {
+  if (!r.devices) return []
+  const names = r.devices.split(',').map(s => s.trim()).filter(Boolean)
+  const gpuCount = names.filter(n => n !== 'CPU').length
+  const tsValues = parseTs(r.ts)
+  // Numbers are shown only when every GPU block has its own -ts value.
+  const fullSplit = gpuCount > 0 && gpuCount <= tsValues.length
+
+  let gpuSeen = 0
+  const segments: DeviceSegment[] = []
+  for (const name of names) {
+    if (name === 'CPU') {
+      segments.push({ name, family: 'CPU', value: null, weight: null, isCpu: true, gpuIndex: -1 })
+    } else {
+      const value = fullSplit ? tsValues[gpuSeen] : null
+      segments.push({
+        name, family: familyOf(name), value,
+        weight: fullSplit ? value : 1, isCpu: false, gpuIndex: gpuSeen
+      })
+      gpuSeen++
+    }
+  }
+
+  const allOnGpu = r.ngl === -1 || r.ngl >= 99
+  // CPU block hidden only when there is no CPU offload at all.
+  const cpuVisible = !(gpuCount > 0 && allOnGpu && !moeOffload(r))
+  let out = segments.filter(s => !s.isCpu || cpuVisible)
+  if (cpuVisible && gpuCount > 0 && !out.some(s => s.isCpu)) {
+    // Partial offload or MoE offload even though the devices list omits CPU.
+    out.push({ name: 'CPU', family: 'CPU', value: null, weight: null, isCpu: true, gpuIndex: -1 })
+  }
+  if (out.length === 1 && out[0].isCpu) {
+    // CPU-only run: the single block spans the whole bar.
+    out[0] = { ...out[0], weight: 1 }
+  }
+  return out
+}
+
+function mixHex(hex: string, whitePct: number): string {
+  if (whitePct <= 0) return hex
+  const n = parseInt(hex.slice(1), 16)
+  const mix = (c: number) => Math.round(c + (255 - c) * whitePct / 100)
+  const r = mix((n >> 16) & 255), g = mix((n >> 8) & 255), b = mix(n & 255)
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+}
+
+function luminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16)
+  const lin = (c: number) => {
+    c /= 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  }
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255)
+}
+
+function segmentStyle(seg: DeviceSegment): Record<string, string> {
+  const base = seg.isCpu ? FAMILY_COLORS.CPU : (FAMILY_COLORS[seg.family] ?? OTHER_COLOR)
+  const mix = seg.isCpu ? 0 : MUTED_MIX[Math.min(seg.gpuIndex, MUTED_MIX.length - 1)]
+  const bg = mixHex(base, mix)
+  return {
+    background: bg,
+    color: luminance(bg) > 0.35 ? '#1c2430' : '#ffffff',
+    flex: seg.weight != null ? `${seg.weight} 1 0` : '0 0 auto'
+  }
+}
+
 // The Build column only earns its width when the current page actually
 // distinguishes builds; otherwise the value is still reachable via hover.
 const showBuildColumn = computed(() => new Set(pageData.value.content.map(r => r.build)).size > 1)
@@ -105,7 +239,7 @@ function onRowEnter(e: MouseEvent, r: ResultRow) {
   const el = e.currentTarget as HTMLElement
   hoverTimer = setTimeout(() => {
     const rect = el.getBoundingClientRect()
-    const estHeight = 34 + (3 + sortedParams(r).length) * 19
+    const estHeight = 34 + (4 + sortedParams(r).length) * 19
     const top = rect.bottom + estHeight > window.innerHeight
       ? Math.max(8, rect.top - estHeight - 4)
       : rect.bottom + 4
@@ -306,8 +440,7 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
             <th class="sortable" @click="onSort('computer')">Computer{{ sortIndicator('computer') }}</th>
             <th class="sortable" @click="onSort('model')">Model{{ sortIndicator('model') }}</th>
             <th class="sortable" @click="onSort('quant')">Quant{{ sortIndicator('quant') }}</th>
-            <th>Backend</th>
-            <th>Devices</th>
+            <th class="devices-col">Devices</th>
             <th class="num sortable" @click="onSort('ngl')">ngl{{ sortIndicator('ngl') }}</th>
             <th>KV Cache</th>
             <th>Params</th>
@@ -325,8 +458,14 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
             <td>{{ r.computerName }} <span class="muted">{{ r.versionDate.slice(0, 10) }}</span></td>
             <td :title="r.modelId">{{ r.modelName }}</td>
             <td>{{ r.quantization }}</td>
-            <td>{{ r.backend ?? '' }}</td>
-            <td>{{ r.devices ?? '' }}</td>
+            <td class="devices-col">
+              <div v-if="deviceSegments(r).length > 0" class="device-bar">
+                <span v-for="(seg, i) in deviceSegments(r)" :key="i" class="device-block" :style="segmentStyle(seg)">
+                  <span class="dev-name">{{ seg.name }}</span>
+                  <span v-if="seg.value !== null" class="dev-ts">{{ seg.value }}</span>
+                </span>
+              </div>
+            </td>
             <td class="num">{{ r.ngl }}</td>
             <td>{{ r.typeK }}/{{ r.typeV }}<span v-if="!r.fa" class="muted" style="font-size:12px"> (No FA)</span></td>
             <td class="params-cell">
@@ -345,13 +484,14 @@ await Promise.all([loadComputers(), loadModels(), loadDeviceValues(), loadResult
             </td>
           </tr>
           <tr v-if="pageData.content.length === 0">
-            <td :colspan="showBuildColumn ? 15 : 14" class="muted">no results</td>
+            <td :colspan="showBuildColumn ? 14 : 13" class="muted">no results</td>
           </tr>
         </tbody>
       </table>
 
       <div v-if="details" class="details-box" :style="{ top: details.top + 'px', left: details.left + 'px' }">
         <div class="details-row"><span class="k">build</span><span>{{ details.row.build ?? '—' }}</span></div>
+        <div class="details-row"><span class="k">backend</span><span>{{ details.row.backend ?? '—' }}</span></div>
         <div class="details-row"><span class="k">pp deviation</span><span>± {{ details.row.ppDeviation }}</span></div>
         <div class="details-row"><span class="k">tg deviation</span><span>± {{ details.row.tgDeviation }}</span></div>
         <div v-for="[k, v] in sortedParams(details.row)" :key="k" class="details-row"><span class="k">{{ k }}</span><span>{{ v }}</span></div>

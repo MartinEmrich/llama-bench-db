@@ -104,6 +104,24 @@ button.small { padding: 3px 8px; font-size: 12px; }
 .param { margin-right: 8px; }
 .param-val { display: inline-block; min-width: 4ch; }
 
+/* Device split gauge in the results table: one block per used device,
+   GPU blocks sized by their -ts share, CPU a minimal fixed block. */
+.devices-col { width: 280px; min-width: 280px; max-width: 280px; }
+.device-bar { display: flex; gap: 2px; width: 100%; }
+.device-block {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.dev-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dev-ts { flex-shrink: 0; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-weight: 700; }
+
 .details-box {
   position: fixed;
   z-index: 50;
